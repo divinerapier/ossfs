@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fuse = "0.3.1"
+fuse = {git = "https://github.com/zargony/rust-fuse"}
 libc = "0.2.62"
 time = "0.1.42"
 log = "*"
