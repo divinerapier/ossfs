@@ -1,3 +1,6 @@
+// #[macro_use]
+// extern crate function_name;
+
 pub mod fs;
 
 #[cfg(test)]
@@ -7,9 +10,7 @@ mod test {
         env_logger::from_env(env_logger::Env::default().default_filter_or("trace")).init();
         log::set_max_level(log::LevelFilter::max());
 
-        let fs = super::fs::cachefs::CacheFs {
-            inode_cache: std::collections::HashMap::new(),
-        };
+        let fs = super::fs::cachefs::CacheFs::new();
         let mountpoint = "./mnt";
         let options = ["-o", "ro", "-o", "fsname=cachefs"]
             .iter()

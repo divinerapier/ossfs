@@ -1,58 +1,160 @@
 use fuse::*;
 
+use function_name::named;
+
 use libc::{c_int, ENOSYS};
+use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::io;
+use std::ops::Add;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 
-const TTL: std::time::Duration = std::time::Duration::from_secs(1);
-
+#[derive(Debug)]
 pub struct CacheFs {
-    pub inode_cache: std::collections::HashMap<u64, (i64, FileType, String)>,
+    inodes: Inodes,
+    path_cache: std::collections::HashMap<String, usize>,
+    next_inode: AtomicU64,
+}
+
+#[derive(Debug)]
+pub struct Inodes(Arc<RwLock<Vec<Inode>>>);
+
+impl Inodes {
+    fn get_attr<'a>(&'a self, index: usize) -> Option<&'a FileAttr> {
+        let nodes = self.0.clone();
+        let nodes = nodes.read().unwrap();
+        if nodes.len() <= index {
+            return None;
+        }
+        return Some(&nodes[index].attr);
+    }
+    fn get_node_by_inode<'a>(&'a self, inode: u64) -> Option<&'a Inode> {
+        let index: usize = inode.wrapping_sub(1) as usize;
+        let nodes = self.0.clone();
+        let nodes = nodes.read().unwrap();
+        if nodes.len() <= index {
+            return None;
+        }
+        return Some(&nodes[index]);
+    }
+}
+
+impl CacheFs {
+    pub fn new() -> CacheFs {
+        CacheFs {
+            inodes: Inodes(Arc::new(RwLock::new(Vec::new()))),
+            // inode_cache: HashMap::new(),
+            path_cache: HashMap::new(),
+            next_inode: AtomicU64::new(2),
+        }
+    }
 }
 
 impl Filesystem for CacheFs {
     /// Initialize filesystem.
     /// Called before any other filesystem method.
     fn init(&mut self, req: &Request) -> Result<(), c_int> {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!(), );
         Ok(())
     }
 
     /// Clean up filesystem.
     /// Called on filesystem exit.
     fn destroy(&mut self, req: &Request) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!(), );
     }
 
     /// Look up a directory entry by name and get its attributes.
+    #[named]
     fn lookup(&mut self, req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEntry) {
-        match self.inode_cache.get(&_parent) {
-            Some(value) => {
-                let value: &(i64, FileType, String) = value;
-                log::debug!(
-                        "line: {}  req. {:?}, parent: {}, name: {:?}, cache: {:?}, offset: {}, filetype: {:?}, path: {}",
-                        std::line!(),
-                        req,
-                        _parent,
-                        _name.to_string_lossy(),
-                        self.inode_cache,
-                        value.0,
-                        value.1,
-                        value.2,
-                    );
+        log::info!(
+            "line: {}  func: {},  parent: {}, name: {}",
+            std::line!(),
+            function_name!(),
+            _parent,
+            _name.to_string_lossy()
+        );
+
+        self.with_node(_parent, |inode| {
+            let inode: Option<&Inode> = inode;
+            match inode {
+                Some(inode) => {
+                    let inode: &Inode = inode;
+                    reply.entry(&std::time::Duration::from_secs(60), &inode.attr, 0);
+                }
+                None => reply.error(ENOSYS),
             }
-            None => {
-                log::warn!(
-                    "not found parent: {}, name: {}",
-                    _parent,
-                    _name.to_string_lossy()
-                );
-            }
-        };
-        reply.error(ENOSYS);
+        });
+
+        // match self.inodes.get(_parent as usize) {
+        //     Some(parent_node) => {
+        //         let parent_node: &Inode = parent_node;
+        //     }
+        //     None => reply.error(ENOSYS),
+        // }
+
+        // match self.inodes.get(_parent as usize) {
+        //     Some(inode) => {
+        //         let inode: &Inode = inode;
+        //         log::info!(
+        //                 "line: {}  , parent: {}, name: {:?}, cache: {:?}, offset: {}, filetype: {:?}, path: {}",
+        //                 std::line!(),
+        //
+        //                 _parent,
+        //                 _name.to_string_lossy(),
+        //                 self.inodes,
+        //                 inode.offset,
+        //                 inode.filetype,
+        //                 inode.name,
+        //             );
+        //         reply.entry(
+        //             &std::time::Duration::from_secs(3600),
+        //             &FileAttr {
+        //                 /// Inode number
+        //                 ino: 0,
+        //                 /// Size in bytes
+        //                 size: 0,
+        //                 /// Size in blocks
+        //                 blocks: 0,
+        //                 /// Time of last access
+        //                 atime: std::time::SystemTime::now(),
+        //                 /// Time of last modification
+        //                 mtime: std::time::SystemTime::now(),
+        //                 /// Time of last change
+        //                 ctime: std::time::SystemTime::now(),
+        //                 /// Time of creation (macOS only)
+        //                 crtime: std::time::SystemTime::now(),
+        //                 /// Kind of file (directory, file, pipe, etc)
+        //                 kind: FileType::RegularFile,
+        //                 /// Permissions
+        //                 perm: 0o666,
+        //                 /// Number of hard links
+        //                 nlink: 0,
+        //                 /// User id
+        //                 uid: 0,
+        //                 /// Group id
+        //                 gid: 0,
+        //                 /// Rdev
+        //                 rdev: 0,
+        //                 /// Flags (macOS only, see chflags(2))
+        //                 flags: 0,
+        //             },
+        //             0,
+        //         );
+        //     }
+        //     None => {
+        //         log::warn!(
+        //             "not found parent: {}, name: {}",
+        //             _parent,
+        //             _name.to_string_lossy()
+        //         );
+        //         reply.error(ENOSYS);
+        //     }
+        // }
     }
 
     /// Forget about an inode.
@@ -62,54 +164,119 @@ impl Filesystem for CacheFs {
     /// each forget. The filesystem may ignore forget calls, if the inodes don't need to
     /// have a limited lifetime. On unmount it is not guaranteed, that all referenced
     /// inodes will receive a forget message.
+    #[named]
     fn forget(&mut self, req: &Request, _ino: u64, _nlookup: u64) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
+        log::info!(
+            "line: {}  func: {},  ino: {}, nlookup: {}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _nlookup
+        );
     }
 
     /// Get file attributes.
+    #[named]
     fn getattr(&mut self, req: &Request, _ino: u64, reply: ReplyAttr) {
-        log::debug!("line: {}  req. {:?}, ino: {}", std::line!(), req, _ino);
+        log::info!(
+            "line: {}  func: {} , ino: {}",
+            std::line!(),
+            function_name!(),
+            _ino
+        );
         if _ino == 0 {
             panic!("_ino is zero")
         }
-        if _ino == 1 {
+        if _ino == 0 {
+            panic!("invalid _ino 0");
+        }
+        if self.inodes.0.len() == 0 {
             let meta: std::fs::Metadata = std::fs::metadata("/").unwrap();
-            let file_type = if meta.file_type().is_dir() {
-                FileType::Directory
-            } else if meta.file_type().is_file() {
-                FileType::RegularFile
-            } else if meta.file_type().is_symlink() {
-                FileType::Symlink
-            } else {
-                FileType::BlockDevice
-            };
-            reply.attr(
-                &std::time::Duration::from_secs(3600),
-                &FileAttr {
-                    ino: 1,
-                    size: 0,
-                    blocks: 0,
-                    atime: meta.accessed().unwrap(), // 1970-01-01 00:00:00
-                    mtime: meta.modified().unwrap(),
-                    ctime: meta.modified().unwrap(),
-                    crtime: meta.created().unwrap(),
-                    kind: file_type,
-                    perm: meta.permissions().mode() as u16,
-                    nlink: 2,
-                    uid: 501,
-                    gid: 20,
-                    rdev: 0,
+            self.inodes.0.push(Inode::new(
+                _ino,
+                _ino,
+                0,
+                meta.size(),
+                std::path::PathBuf::from("/"),
+                FileType::Directory,
+                FileAttr {
+                    ino: _ino,
+                    size: meta.size(),
+                    blocks: meta.blocks(),
+                    atime: std::time::UNIX_EPOCH
+                        .clone()
+                        .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+                    mtime: std::time::UNIX_EPOCH
+                        .clone()
+                        .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
+                    ctime: std::time::UNIX_EPOCH
+                        .clone()
+                        .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
+                    /// Time of creation (macOS only)
+                    crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
+                    /// Kind of file (directory, file, pipe, etc)
+                    kind: FileType::Directory,
+                    /// Permissions
+                    perm: 0o666,
+                    /// Number of hard links
+                    nlink: meta.nlink() as u32,
+                    /// User id
+                    uid: meta.uid(),
+                    /// Group id
+                    gid: meta.gid(),
+                    /// Rdev
+                    rdev: meta.rdev() as u32,
+                    /// Flags (macOS only, see chflags(2))
                     flags: 0,
                 },
-            );
-            self.inode_cache
-                .insert(_ino, (0, FileType::Directory, String::from("/")));
-        } else {
-            reply.error(ENOSYS);
+            ));
         }
+        reply.attr(
+            &std::time::Duration::from_secs(3600),
+            &self.inodes.0[_ino.wrapping_sub(1) as usize].attr,
+        );
+
+        // if _ino == 1 {
+        //     reply.attr(&std::time::Duration::from_secs(3600), &self.inodes[0].attr);
+        // // let meta: std::fs::Metadata = std::fs::metadata("/").unwrap();
+        // // let file_type = if meta.file_type().is_dir() {
+        // //     FileType::Directory
+        // // } else if meta.file_type().is_file() {
+        // //     FileType::RegularFile
+        // // } else if meta.file_type().is_symlink() {
+        // //     FileType::Symlink
+        // // } else {
+        // //     FileType::BlockDevice
+        // // };
+        // // self.inodes.push(Inode::new(
+        // //     _ino,
+        // //     _ino,
+        // //     0,
+        // //     0,
+        // //     String::from("/"),
+        // //     FileType::Directory,
+        // // ));
+        // } else {
+        //     match self.inode_cache.get(&_ino) {
+        //         Some(inode) => log::warn!(
+        //             "line: {}, ino: {}, offset: {}, filetype: {:?}, name: {}",
+        //             std::line!(),
+        //             _ino,
+        //             inode.offset,
+        //             inode.filetype,
+        //             inode.name,
+        //         ),
+        //         None => {
+        //             log::error!("ino: {} not found", _ino);
+        //             reply.error(ENOSYS);
+        //         }
+        //     }
+        // }
     }
 
     /// Set file attributes.
+    #[named]
     fn setattr(
         &mut self,
         req: &Request<'_>,
@@ -127,19 +294,22 @@ impl Filesystem for CacheFs {
         _flags: Option<u32>,
         reply: ReplyAttr,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        log::debug!("line: {} func: {} inode: {:?}, mode: {:?}, uid: {:?}, gid: {:?}, size: {:?}, atime: {:?}, mtime: {:?}, fh: {:?}, crtime: {:?}, bkuptime: {:?}, flag: {:?}", 
+        std::line!(), function_name!(),
+        _ino, _mode, _uid, _gid, _size, _atime, _mtime, _fh, _crtime, _chgtime, _bkuptime);
 
         reply.error(ENOSYS);
     }
 
     /// Read symbolic link.
     fn readlink(&mut self, req: &Request, _ino: u64, reply: ReplyData) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
         reply.error(ENOSYS);
     }
 
     /// Create file node.
     /// Create a regular file, character device, block device, fifo or socket node.
+    #[named]
     fn mknod(
         &mut self,
         req: &Request,
@@ -149,28 +319,36 @@ impl Filesystem for CacheFs {
         _rdev: u32,
         reply: ReplyEntry,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        log::warn!(
+            "line: {} func: {} , parent: {}, name: {}, mode: {}, rdev: {}",
+            std::line!(),
+            function_name!(),
+            _parent,
+            _name.to_string_lossy(),
+            _mode,
+            _rdev,
+        );
 
         reply.error(ENOSYS);
     }
 
     /// Create a directory.
     fn mkdir(&mut self, req: &Request, _parent: u64, _name: &OsStr, _mode: u32, reply: ReplyEntry) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
 
     /// Remove a file.
     fn unlink(&mut self, req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
 
     /// Remove a directory.
     fn rmdir(&mut self, req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -184,7 +362,7 @@ impl Filesystem for CacheFs {
         _link: &Path,
         reply: ReplyEntry,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -199,7 +377,7 @@ impl Filesystem for CacheFs {
         _newname: &OsStr,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -213,7 +391,7 @@ impl Filesystem for CacheFs {
         _newname: &OsStr,
         reply: ReplyEntry,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -227,7 +405,7 @@ impl Filesystem for CacheFs {
     /// filesystem may set, to change the way the file is opened. See fuse_file_info
     /// structure in <fuse_common.h> for more details.
     fn open(&mut self, req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.opened(0, 0);
     }
@@ -248,7 +426,7 @@ impl Filesystem for CacheFs {
         _size: u32,
         reply: ReplyData,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -269,7 +447,7 @@ impl Filesystem for CacheFs {
         _flags: u32,
         reply: ReplyWrite,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -285,7 +463,7 @@ impl Filesystem for CacheFs {
     /// filesystem wants to return write errors. If the filesystem supports file locking
     /// operations (setlk, getlk) it should remove all locks belonging to 'lock_owner'.
     fn flush(&mut self, req: &Request, _ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -308,7 +486,7 @@ impl Filesystem for CacheFs {
         _flush: bool,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.ok();
     }
@@ -317,7 +495,7 @@ impl Filesystem for CacheFs {
     /// If the datasync parameter is non-zero, then only the user data should be flushed,
     /// not the meta data.
     fn fsync(&mut self, req: &Request, _ino: u64, _fh: u64, _datasync: bool, reply: ReplyEmpty) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -330,10 +508,9 @@ impl Filesystem for CacheFs {
     /// directory stream operations in case the contents of the directory can change
     /// between opendir and releasedir.
     fn opendir(&mut self, req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
-        log::debug!(
-            "line: {}  req. {:?}, _ino: {}, _flags: {}",
+        log::info!(
+            "line: {}  , _ino: {}, _flags: {}",
             std::line!(),
-            req,
             _ino,
             _flags
         );
@@ -353,6 +530,7 @@ impl Filesystem for CacheFs {
     /// requested size. Send an empty buffer on end of stream. fh will contain the
     /// value set by the opendir method, or will be undefined if the opendir method
     /// didn't set any value.
+    #[named]
     fn readdir(
         &mut self,
         req: &Request,
@@ -361,42 +539,257 @@ impl Filesystem for CacheFs {
         _offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        log::debug!(
-            "line: {}  req. {:?}, _ino: {}, _fh: {}, _offset: {}",
+        log::info!(
+            "line: {} func: {} , _ino: {}, _fh: {}, _offset: {}",
             std::line!(),
-            req,
+            function_name!(),
             _ino,
             _fh,
             _offset
         );
 
-        let mut index = 0u64;
-
-        if _ino == 1 {
-            let dir: std::fs::ReadDir = std::fs::read_dir("/").unwrap();
-            for entry in dir {
-                let entry: std::fs::DirEntry = entry.unwrap();
-                let filetype = if entry.metadata().unwrap().is_file() {
-                    FileType::RegularFile
-                } else {
-                    FileType::Directory
-                };
-                reply.add(_ino + index + 1, index as i64, filetype, entry.file_name());
-                self.inode_cache.insert(
-                    _ino + index + 1,
-                    (
-                        index as i64,
-                        filetype,
-                        entry.file_name().into_string().unwrap(),
-                    ),
-                );
-                index += 1;
-            }
-            // reply.add(ino: u64, offset: i64, kind: FileType, name: T)
-            reply.ok();
-        } else {
-            reply.error(ENOSYS);
+        if _ino == 0 {
+            panic!("zero inode");
         }
+
+        let mut index = 0;
+        let inode: Option<&Inode> = self.inodes.get_node_by_inode(_ino);
+        match inode {
+            Some(inode) => {
+                let inode: &Inode = inode;
+                if _ino == 1 {
+                    let dir: std::fs::ReadDir = std::fs::read_dir("/").unwrap();
+                    for entry in dir {
+                        let entry: std::fs::DirEntry = entry.unwrap();
+                        let filetype = if entry.metadata().unwrap().is_file() {
+                            FileType::RegularFile
+                        } else {
+                            FileType::Directory
+                        };
+                        let next_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+                        reply.add(next_inode, index as i64, filetype, entry.file_name());
+                        let filepath = std::path::PathBuf::from("/").join(entry.file_name());
+                        log::warn!(
+                            "parent: {}, ino: {}, offset: {}, file_name: {}, filepath: {:?}",
+                            _ino,
+                            next_inode,
+                            index,
+                            entry.file_name().to_string_lossy(),
+                            filepath,
+                        );
+
+                        let meta: std::fs::Metadata = std::fs::metadata(&filepath).unwrap();
+                        self.inodes.0.push(Inode::new(
+                            next_inode,
+                            _ino,
+                            index,
+                            meta.size(),
+                            inode.path.join(entry.file_name()),
+                            filetype,
+                            FileAttr {
+                                ino: next_inode,
+                                size: meta.size(),
+                                blocks: meta.blocks(),
+                                atime: std::time::UNIX_EPOCH
+                                    .clone()
+                                    .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+                                mtime: std::time::UNIX_EPOCH
+                                    .clone()
+                                    .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
+                                ctime: std::time::UNIX_EPOCH
+                                    .clone()
+                                    .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
+                                crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
+                                kind: filetype,
+                                perm: meta.mode() as u16,
+                                nlink: meta.nlink() as u32,
+                                uid: meta.uid(),
+                                gid: meta.gid(),
+                                rdev: meta.rdev() as u32,
+                                flags: 0,
+                            },
+                        ));
+                        index += 1;
+                    }
+                    reply.ok();
+                } else {
+                    log::error!(
+                        "_ino: {}, _fh: {}, _offset: {} not implement.",
+                        _ino,
+                        _fh,
+                        _offset,
+                    );
+                    reply.error(ENOSYS);
+                }
+            }
+            None => {
+                log::error!(
+                    "inode: {} not found. cannot read dir. nodes: {:?}",
+                    _ino,
+                    self.inodes
+                );
+                return;
+            }
+        }
+
+        // self.with_node(_ino, |inode| {
+        //     let mut index = 0u64;
+        //     match inode {
+        //         Some(inode) => {
+        //             let inode: &Inode = inode;
+        //             if _ino == 1 {
+        //                 let dir: std::fs::ReadDir = std::fs::read_dir("/").unwrap();
+        //                 for entry in dir {
+        //                     let entry: std::fs::DirEntry = entry.unwrap();
+        //                     let filetype = if entry.metadata().unwrap().is_file() {
+        //                         FileType::RegularFile
+        //                     } else {
+        //                         FileType::Directory
+        //                     };
+        //                     let next_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+        //                     reply.add(next_inode, index as i64, filetype, entry.file_name());
+        //                     let filepath = std::path::PathBuf::from("/").join(entry.file_name());
+        //                     log::warn!(
+        //                         "parent: {}, ino: {}, offset: {}, file_name: {}, filepath: {:?}",
+        //                         _ino,
+        //                         next_inode,
+        //                         index,
+        //                         entry.file_name().to_string_lossy(),
+        //                         filepath,
+        //                     );
+
+        //                     let meta: std::fs::Metadata = std::fs::metadata(&filepath).unwrap();
+        //                     self.inodes.0.push(Inode::new(
+        //                         next_inode,
+        //                         _ino,
+        //                         index,
+        //                         meta.size(),
+        //                         inode.path.join(entry.file_name()),
+        //                         filetype,
+        //                         FileAttr {
+        //                             ino: next_inode,
+        //                             size: meta.size(),
+        //                             blocks: meta.blocks(),
+        //                             atime: std::time::UNIX_EPOCH.clone().add(
+        //                                 std::time::Duration::from_secs(meta.atime_nsec() as u64),
+        //                             ),
+        //                             mtime: std::time::UNIX_EPOCH.clone().add(
+        //                                 std::time::Duration::from_secs(meta.mtime_nsec() as u64),
+        //                             ),
+        //                             ctime: std::time::UNIX_EPOCH.clone().add(
+        //                                 std::time::Duration::from_secs(meta.ctime_nsec() as u64),
+        //                             ),
+        //                             crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
+        //                             kind: filetype,
+        //                             perm: meta.mode() as u16,
+        //                             nlink: meta.nlink() as u32,
+        //                             uid: meta.uid(),
+        //                             gid: meta.gid(),
+        //                             rdev: meta.rdev() as u32,
+        //                             flags: 0,
+        //                         },
+        //                     ));
+        //                     index += 1;
+        //                 }
+        //                 reply.ok();
+        //             } else {
+        //                 log::error!(
+        //                     "_ino: {}, _fh: {}, _offset: {} not implement.",
+        //                     _ino,
+        //                     _fh,
+        //                     _offset,
+        //                 );
+        //                 reply.error(ENOSYS);
+        //             }
+        //         }
+        //         None => {
+        //             log::error!(
+        //                 "inode: {} not found. cannot read dir. nodes: {:?}",
+        //                 _ino,
+        //                 self.inodes
+        //             );
+        //         }
+        //     };
+        // });
+
+        // let parent_node = self.inodes.get(_ino.wrapping_sub(1) as usize);
+
+        // match parent_node {
+        //     Some(parent_node) => {
+        //         let parent_node: &Inode = parent_node;
+        //         if _ino == 1 {
+        //             let dir: std::fs::ReadDir = std::fs::read_dir("/").unwrap();
+        //             for entry in dir {
+        //                 let entry: std::fs::DirEntry = entry.unwrap();
+        //                 let filetype = if entry.metadata().unwrap().is_file() {
+        //                     FileType::RegularFile
+        //                 } else {
+        //                     FileType::Directory
+        //                 };
+        //                 let next_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+        //                 reply.add(next_inode, index as i64, filetype, entry.file_name());
+        //                 let filepath = std::path::PathBuf::from("/").join(entry.file_name());
+        //                 log::warn!(
+        //                     "parent: {}, ino: {}, offset: {}, file_name: {}, filepath: {:?}",
+        //                     _ino,
+        //                     next_inode,
+        //                     index,
+        //                     entry.file_name().to_string_lossy(),
+        //                     filepath,
+        //                 );
+
+        //                 let meta: std::fs::Metadata = std::fs::metadata(&filepath).unwrap();
+        //                 self.inodes.push(Inode::new(
+        //                     next_inode,
+        //                     _ino,
+        //                     index,
+        //                     meta.size(),
+        //                     parent_node.path.join(entry.file_name()),
+        //                     filetype,
+        //                     FileAttr {
+        //                         ino: next_inode,
+        //                         size: meta.size(),
+        //                         blocks: meta.blocks(),
+        //                         atime: std::time::UNIX_EPOCH
+        //                             .clone()
+        //                             .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+        //                         mtime: std::time::UNIX_EPOCH
+        //                             .clone()
+        //                             .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
+        //                         ctime: std::time::UNIX_EPOCH
+        //                             .clone()
+        //                             .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
+        //                         crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
+        //                         kind: filetype,
+        //                         perm: meta.mode() as u16,
+        //                         nlink: meta.nlink() as u32,
+        //                         uid: meta.uid(),
+        //                         gid: meta.gid(),
+        //                         rdev: meta.rdev() as u32,
+        //                         flags: 0,
+        //                     },
+        //                 ));
+        //                 index += 1;
+        //             }
+        //             reply.ok();
+        //         } else {
+        //             log::error!(
+        //                 "_ino: {}, _fh: {}, _offset: {} not implement.",
+        //                 _ino,
+        //                 _fh,
+        //                 _offset,
+        //             );
+        //             reply.error(ENOSYS);
+        //         }
+        //     }
+        //     None => {
+        //         log::error!(
+        //             "inode: {} not found. cannot read dir. nodes: {:?}",
+        //             _ino,
+        //             self.inodes
+        //         );
+        //     }
+        // };
     }
 
     /// Release an open directory.
@@ -404,8 +797,7 @@ impl Filesystem for CacheFs {
     /// contain the value set by the opendir method, or will be undefined if the
     /// opendir method didn't set any value.
     fn releasedir(&mut self, req: &Request, _ino: u64, _fh: u64, _flags: u32, reply: ReplyEmpty) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
-
+        // log::debug!("line: {}  ", std::line!());
         reply.ok();
     }
 
@@ -414,16 +806,56 @@ impl Filesystem for CacheFs {
     /// be flushed, not the meta data. fh will contain the value set by the opendir
     /// method, or will be undefined if the opendir method didn't set any value.
     fn fsyncdir(&mut self, req: &Request, _ino: u64, _fh: u64, _datasync: bool, reply: ReplyEmpty) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
 
     /// Get file system statistics.
+    #[named]
     fn statfs(&mut self, req: &Request, _ino: u64, reply: ReplyStatfs) {
-        log::debug!("line: {}  req. {:?}, ino: {}", std::line!(), req, _ino);
-
-        reply.statfs(0, 0, 0, 0, 0, 512, 255, 0);
+        log::info!(
+            "line: {}  func: {}, ino: {}",
+            std::line!(),
+            function_name!(),
+            _ino
+        );
+        if _ino == 1 {
+            let stat: nix::sys::statfs::Statfs = nix::sys::statfs::statfs("/").unwrap();
+            #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
+            {
+                reply.statfs(
+                    stat.blocks(),
+                    stat.blocks_free(),
+                    stat.blocks_available(),
+                    stat.files(),
+                    stat.files_free(),
+                    stat.block_size(),
+                    stat.maximum_name_length(),
+                    4096,
+                );
+            }
+            #[cfg(any(target_os = "ios", target_os = "macos",))]
+            {
+                reply.statfs(
+                    stat.blocks(),
+                    stat.blocks_free(),
+                    stat.blocks_available(),
+                    stat.files(),
+                    stat.files_free(),
+                    stat.block_size(),
+                    65535,
+                    4096,
+                );
+                log::info!("line: {}, blocks: {}, blocks_free: {}, blocks_available: {}, files: {}, files_free: {}", std::line!(),    stat.blocks(),
+                    stat.blocks_free(),
+                        stat.blocks_available(),
+                        stat.files(),
+                        stat.files_free());
+            }
+        } else {
+            log::error!("statfs not implement for ino: {}", _ino);
+        }
     }
 
     /// Set an extended attribute.
@@ -437,7 +869,7 @@ impl Filesystem for CacheFs {
         _position: u32,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -447,7 +879,7 @@ impl Filesystem for CacheFs {
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
     fn getxattr(&mut self, req: &Request, _ino: u64, _name: &OsStr, _size: u32, reply: ReplyXattr) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -457,14 +889,14 @@ impl Filesystem for CacheFs {
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
     fn listxattr(&mut self, req: &Request, _ino: u64, _size: u32, reply: ReplyXattr) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
 
     /// Remove an extended attribute.
     fn removexattr(&mut self, req: &Request, _ino: u64, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -474,7 +906,7 @@ impl Filesystem for CacheFs {
     /// mount option is given, this method is not called. This method is not called
     /// under Linux kernel versions 2.4.x
     fn access(&mut self, req: &Request, _ino: u64, _mask: u32, reply: ReplyEmpty) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -498,7 +930,7 @@ impl Filesystem for CacheFs {
         _flags: u32,
         reply: ReplyCreate,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -516,7 +948,7 @@ impl Filesystem for CacheFs {
         _pid: u32,
         reply: ReplyLock,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -541,7 +973,7 @@ impl Filesystem for CacheFs {
         _sleep: bool,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -550,7 +982,7 @@ impl Filesystem for CacheFs {
     /// Note: This makes sense only for block device backed filesystems mounted
     /// with the 'blkdev' option
     fn bmap(&mut self, req: &Request, _ino: u64, _blocksize: u32, _idx: u64, reply: ReplyBmap) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -559,7 +991,7 @@ impl Filesystem for CacheFs {
     /// FUSE_VOL_RENAME to enable
     #[cfg(target_os = "macos")]
     fn setvolname(&mut self, req: &Request, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -576,7 +1008,7 @@ impl Filesystem for CacheFs {
         _options: u64,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -585,8 +1017,24 @@ impl Filesystem for CacheFs {
     /// during init to FUSE_XTIMES to enable
     #[cfg(target_os = "macos")]
     fn getxtimes(&mut self, req: &Request, _ino: u64, reply: ReplyXTimes) {
-        // log::debug!("line: {}  req. {:?}", std::line!(), req);
+        // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
+    }
+}
+
+impl CacheFs {
+    fn with_node<F>(&self, inode: u64, f: F)
+    where
+        F: Fn(Option<&Inode>),
+    {
+        if inode == 0 {
+            return;
+        }
+        let index: usize = inode.wrapping_sub(1) as usize;
+        if self.inodes.0.len() <= index {
+            return;
+        }
+        f(self.inodes.0.get(index))
     }
 }
