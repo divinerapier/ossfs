@@ -1,5 +1,7 @@
 pub mod backend;
-pub mod cachefs;
 pub mod filesystem;
-pub mod inode;
-pub mod storage;
+pub mod fuse;
+pub mod node;
+
+pub use self::backend::SimpleBackend;
+pub use self::fuse::Fuse;

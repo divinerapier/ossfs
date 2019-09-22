@@ -2,6 +2,9 @@ use fuse::*;
 
 use function_name::named;
 
+use super::backend::Backend;
+use super::filesystem::FileSystem;
+use super::node::Node;
 use libc::{c_int, ENOSYS};
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -14,39 +17,19 @@ use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 
 #[derive(Debug)]
-pub struct CacheFs {
-    inodes: Inodes,
+pub struct Fuse<B>
+where
+    B: Backend + std::fmt::Debug,
+{
+    fs: FileSystem<B>,
     path_cache: std::collections::HashMap<String, usize>,
     next_inode: AtomicU64,
 }
 
-#[derive(Debug)]
-pub struct Inodes(Arc<RwLock<Vec<Inode>>>);
-
-impl Inodes {
-    fn get_attr<'a>(&'a self, index: usize) -> Option<&'a FileAttr> {
-        let nodes = self.0.clone();
-        let nodes = nodes.read().unwrap();
-        if nodes.len() <= index {
-            return None;
-        }
-        return Some(&nodes[index].attr);
-    }
-    fn get_node_by_inode<'a>(&'a self, inode: u64) -> Option<&'a Inode> {
-        let index: usize = inode.wrapping_sub(1) as usize;
-        let nodes = self.0.clone();
-        let nodes = nodes.read().unwrap();
-        if nodes.len() <= index {
-            return None;
-        }
-        return Some(&nodes[index]);
-    }
-}
-
-impl CacheFs {
-    pub fn new() -> CacheFs {
-        CacheFs {
-            inodes: Inodes(Arc::new(RwLock::new(Vec::new()))),
+impl<B: Backend + std::fmt::Debug> Fuse<B> {
+    pub fn new(backend: B) -> Fuse<B> {
+        Fuse {
+            fs: FileSystem::new(backend),
             // inode_cache: HashMap::new(),
             path_cache: HashMap::new(),
             next_inode: AtomicU64::new(2),
@@ -54,7 +37,7 @@ impl CacheFs {
     }
 }
 
-impl Filesystem for CacheFs {
+impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// Initialize filesystem.
     /// Called before any other filesystem method.
     fn init(&mut self, req: &Request) -> Result<(), c_int> {
@@ -70,25 +53,21 @@ impl Filesystem for CacheFs {
 
     /// Look up a directory entry by name and get its attributes.
     #[named]
-    fn lookup(&mut self, req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEntry) {
+    fn lookup(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         log::info!(
             "line: {}  func: {},  parent: {}, name: {}",
             std::line!(),
             function_name!(),
-            _parent,
-            _name.to_string_lossy()
+            parent,
+            name.to_string_lossy()
         );
 
-        self.with_node(_parent, |inode| {
-            let inode: Option<&Inode> = inode;
-            match inode {
-                Some(inode) => {
-                    let inode: &Inode = inode;
-                    reply.entry(&std::time::Duration::from_secs(60), &inode.attr, 0);
-                }
-                None => reply.error(ENOSYS),
+        match self.fs.lookup(parent, name) {
+            Some(attr) => {
+                reply.entry(&std::time::Duration::from_secs(3600), &attr, 0);
             }
-        });
+            None => reply.error(ENOSYS),
+        }
 
         // match self.inodes.get(_parent as usize) {
         //     Some(parent_node) => {
@@ -178,101 +157,111 @@ impl Filesystem for CacheFs {
 
     /// Get file attributes.
     #[named]
-    fn getattr(&mut self, req: &Request, _ino: u64, reply: ReplyAttr) {
+    fn getattr(&mut self, req: &Request, ino: u64, reply: ReplyAttr) {
         log::info!(
             "line: {}  func: {} , ino: {}",
             std::line!(),
             function_name!(),
-            _ino
-        );
-        if _ino == 0 {
-            panic!("_ino is zero")
-        }
-        if _ino == 0 {
-            panic!("invalid _ino 0");
-        }
-        if self.inodes.0.len() == 0 {
-            let meta: std::fs::Metadata = std::fs::metadata("/").unwrap();
-            self.inodes.0.push(Inode::new(
-                _ino,
-                _ino,
-                0,
-                meta.size(),
-                std::path::PathBuf::from("/"),
-                FileType::Directory,
-                FileAttr {
-                    ino: _ino,
-                    size: meta.size(),
-                    blocks: meta.blocks(),
-                    atime: std::time::UNIX_EPOCH
-                        .clone()
-                        .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-                    mtime: std::time::UNIX_EPOCH
-                        .clone()
-                        .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
-                    ctime: std::time::UNIX_EPOCH
-                        .clone()
-                        .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
-                    /// Time of creation (macOS only)
-                    crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
-                    /// Kind of file (directory, file, pipe, etc)
-                    kind: FileType::Directory,
-                    /// Permissions
-                    perm: 0o666,
-                    /// Number of hard links
-                    nlink: meta.nlink() as u32,
-                    /// User id
-                    uid: meta.uid(),
-                    /// Group id
-                    gid: meta.gid(),
-                    /// Rdev
-                    rdev: meta.rdev() as u32,
-                    /// Flags (macOS only, see chflags(2))
-                    flags: 0,
-                },
-            ));
-        }
-        reply.attr(
-            &std::time::Duration::from_secs(3600),
-            &self.inodes.0[_ino.wrapping_sub(1) as usize].attr,
+            ino
         );
 
-        // if _ino == 1 {
-        //     reply.attr(&std::time::Duration::from_secs(3600), &self.inodes[0].attr);
-        // // let meta: std::fs::Metadata = std::fs::metadata("/").unwrap();
-        // // let file_type = if meta.file_type().is_dir() {
-        // //     FileType::Directory
-        // // } else if meta.file_type().is_file() {
-        // //     FileType::RegularFile
-        // // } else if meta.file_type().is_symlink() {
-        // //     FileType::Symlink
-        // // } else {
-        // //     FileType::BlockDevice
-        // // };
-        // // self.inodes.push(Inode::new(
-        // //     _ino,
-        // //     _ino,
-        // //     0,
-        // //     0,
-        // //     String::from("/"),
-        // //     FileType::Directory,
-        // // ));
-        // } else {
-        //     match self.inode_cache.get(&_ino) {
-        //         Some(inode) => log::warn!(
-        //             "line: {}, ino: {}, offset: {}, filetype: {:?}, name: {}",
-        //             std::line!(),
-        //             _ino,
-        //             inode.offset,
-        //             inode.filetype,
-        //             inode.name,
-        //         ),
-        //         None => {
-        //             log::error!("ino: {} not found", _ino);
-        //             reply.error(ENOSYS);
-        //         }
-        //     }
+        match self.fs.getattr(ino) {
+            Some(attr) => {
+                reply.attr(&std::time::Duration::from_secs(3600), &attr);
+            }
+            None => {
+                reply.error(ENOSYS);
+            }
+        }
+
+        // if _ino == 0 {
+        //     panic!("_ino is zero")
         // }
+        // if _ino == 0 {
+        //     panic!("invalid _ino 0");
+        // }
+        // if self.inodes.0.len() == 0 {
+        //     let meta: std::fs::Metadata = std::fs::metadata("/").unwrap();
+        //     self.inodes.0.push(Inode::new(
+        //         _ino,
+        //         _ino,
+        //         0,
+        //         meta.size(),
+        //         std::path::PathBuf::from("/"),
+        //         FileType::Directory,
+        //         FileAttr {
+        //             ino: _ino,
+        //             size: meta.size(),
+        //             blocks: meta.blocks(),
+        //             atime: std::time::UNIX_EPOCH
+        //                 .clone()
+        //                 .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+        //             mtime: std::time::UNIX_EPOCH
+        //                 .clone()
+        //                 .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
+        //             ctime: std::time::UNIX_EPOCH
+        //                 .clone()
+        //                 .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
+        //             /// Time of creation (macOS only)
+        //             crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
+        //             /// Kind of file (directory, file, pipe, etc)
+        //             kind: FileType::Directory,
+        //             /// Permissions
+        //             perm: 0o666,
+        //             /// Number of hard links
+        //             nlink: meta.nlink() as u32,
+        //             /// User id
+        //             uid: meta.uid(),
+        //             /// Group id
+        //             gid: meta.gid(),
+        //             /// Rdev
+        //             rdev: meta.rdev() as u32,
+        //             /// Flags (macOS only, see chflags(2))
+        //             flags: 0,
+        //         },
+        //     ));
+        // }
+        // reply.attr(
+        //     &std::time::Duration::from_secs(3600),
+        //     &self.inodes.0[_ino.wrapping_sub(1) as usize].attr,
+        // );
+
+        // // if _ino == 1 {
+        // //     reply.attr(&std::time::Duration::from_secs(3600), &self.inodes[0].attr);
+        // // // let meta: std::fs::Metadata = std::fs::metadata("/").unwrap();
+        // // // let file_type = if meta.file_type().is_dir() {
+        // // //     FileType::Directory
+        // // // } else if meta.file_type().is_file() {
+        // // //     FileType::RegularFile
+        // // // } else if meta.file_type().is_symlink() {
+        // // //     FileType::Symlink
+        // // // } else {
+        // // //     FileType::BlockDevice
+        // // // };
+        // // // self.inodes.push(Inode::new(
+        // // //     _ino,
+        // // //     _ino,
+        // // //     0,
+        // // //     0,
+        // // //     String::from("/"),
+        // // //     FileType::Directory,
+        // // // ));
+        // // } else {
+        // //     match self.inode_cache.get(&_ino) {
+        // //         Some(inode) => log::warn!(
+        // //             "line: {}, ino: {}, offset: {}, filetype: {:?}, name: {}",
+        // //             std::line!(),
+        // //             _ino,
+        // //             inode.offset,
+        // //             inode.filetype,
+        // //             inode.name,
+        // //         ),
+        // //         None => {
+        // //             log::error!("ino: {} not found", _ino);
+        // //             reply.error(ENOSYS);
+        // //         }
+        // //     }
+        // // }
     }
 
     /// Set file attributes.
@@ -405,7 +394,7 @@ impl Filesystem for CacheFs {
     /// filesystem may set, to change the way the file is opened. See fuse_file_info
     /// structure in <fuse_common.h> for more details.
     fn open(&mut self, req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
-        // log::debug!("line: {}  ", std::line!());
+        log::debug!("line: {}  ", std::line!());
 
         reply.opened(0, 0);
     }
@@ -507,10 +496,12 @@ impl Filesystem for CacheFs {
     /// anything in fh, though that makes it impossible to implement standard conforming
     /// directory stream operations in case the contents of the directory can change
     /// between opendir and releasedir.
+    #[named]
     fn opendir(&mut self, req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
         log::info!(
-            "line: {}  , _ino: {}, _flags: {}",
+            "line: {}  func: {} _ino: {}, _flags: {}",
             std::line!(),
+            function_name!(),
             _ino,
             _flags
         );
@@ -534,103 +525,101 @@ impl Filesystem for CacheFs {
     fn readdir(
         &mut self,
         req: &Request,
-        _ino: u64,
-        _fh: u64,
-        _offset: i64,
+        ino: u64,
+        fh: u64,
+        offset: i64,
         mut reply: ReplyDirectory,
     ) {
         log::info!(
             "line: {} func: {} , _ino: {}, _fh: {}, _offset: {}",
             std::line!(),
             function_name!(),
-            _ino,
-            _fh,
-            _offset
+            ino,
+            fh,
+            offset
         );
 
-        if _ino == 0 {
-            panic!("zero inode");
-        }
+        self.fs.readdir(ino, fh, offset);
 
-        let mut index = 0;
-        let inode: Option<&Inode> = self.inodes.get_node_by_inode(_ino);
-        match inode {
-            Some(inode) => {
-                let inode: &Inode = inode;
-                if _ino == 1 {
-                    let dir: std::fs::ReadDir = std::fs::read_dir("/").unwrap();
-                    for entry in dir {
-                        let entry: std::fs::DirEntry = entry.unwrap();
-                        let filetype = if entry.metadata().unwrap().is_file() {
-                            FileType::RegularFile
-                        } else {
-                            FileType::Directory
-                        };
-                        let next_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-                        reply.add(next_inode, index as i64, filetype, entry.file_name());
-                        let filepath = std::path::PathBuf::from("/").join(entry.file_name());
-                        log::warn!(
-                            "parent: {}, ino: {}, offset: {}, file_name: {}, filepath: {:?}",
-                            _ino,
-                            next_inode,
-                            index,
-                            entry.file_name().to_string_lossy(),
-                            filepath,
-                        );
+        // let mut index = 0;
+        // let inode: Option<&Node> = self.inodes.get_node_by_inode(_ino);
+        // match inode {
+        //     Some(inode) => {
+        //         let inode: &Node = inode;
+        //         if _ino == 1 {
+        //             let dir: std::fs::ReadDir = std::fs::read_dir("/").unwrap();
+        //             for entry in dir {
+        //                 let entry: std::fs::DirEntry = entry.unwrap();
+        //                 let filetype = if entry.metadata().unwrap().is_file() {
+        //                     FileType::RegularFile
+        //                 } else {
+        //                     FileType::Directory
+        //                 };
+        //                 let next_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
+        //                 reply.add(next_inode, index as i64, filetype, entry.file_name());
+        //                 let filepath = std::path::PathBuf::from("/").join(entry.file_name());
+        //                 log::warn!(
+        //                     "parent: {}, ino: {}, offset: {}, file_name: {}, filepath: {:?}",
+        //                     _ino,
+        //                     next_inode,
+        //                     index,
+        //                     entry.file_name().to_string_lossy(),
+        //                     filepath,
+        //                 );
 
-                        let meta: std::fs::Metadata = std::fs::metadata(&filepath).unwrap();
-                        self.inodes.0.push(Inode::new(
-                            next_inode,
-                            _ino,
-                            index,
-                            meta.size(),
-                            inode.path.join(entry.file_name()),
-                            filetype,
-                            FileAttr {
-                                ino: next_inode,
-                                size: meta.size(),
-                                blocks: meta.blocks(),
-                                atime: std::time::UNIX_EPOCH
-                                    .clone()
-                                    .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-                                mtime: std::time::UNIX_EPOCH
-                                    .clone()
-                                    .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
-                                ctime: std::time::UNIX_EPOCH
-                                    .clone()
-                                    .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
-                                crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
-                                kind: filetype,
-                                perm: meta.mode() as u16,
-                                nlink: meta.nlink() as u32,
-                                uid: meta.uid(),
-                                gid: meta.gid(),
-                                rdev: meta.rdev() as u32,
-                                flags: 0,
-                            },
-                        ));
-                        index += 1;
-                    }
-                    reply.ok();
-                } else {
-                    log::error!(
-                        "_ino: {}, _fh: {}, _offset: {} not implement.",
-                        _ino,
-                        _fh,
-                        _offset,
-                    );
-                    reply.error(ENOSYS);
-                }
-            }
-            None => {
-                log::error!(
-                    "inode: {} not found. cannot read dir. nodes: {:?}",
-                    _ino,
-                    self.inodes
-                );
-                return;
-            }
-        }
+        //                 let meta: std::fs::Metadata = std::fs::metadata(&filepath).unwrap();
+        //                 self.inodes.0.push(Inode::new(
+        //                     next_inode,
+        //                     _ino,
+        //                     index,
+        //                     meta.size(),
+        //                     inode.path.join(entry.file_name()),
+        //                     filetype,
+        //                     FileAttr {
+        //                         ino: next_inode,
+        //                         size: meta.size(),
+        //                         blocks: meta.blocks(),
+        //                         atime: std::time::UNIX_EPOCH
+        //                             .clone()
+        //                             .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+        //                         mtime: std::time::UNIX_EPOCH
+        //                             .clone()
+        //                             .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
+        //                         ctime: std::time::UNIX_EPOCH
+        //                             .clone()
+        //                             .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
+        //                         crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
+        //                         kind: filetype,
+        //                         perm: meta.mode() as u16,
+        //                         nlink: meta.nlink() as u32,
+        //                         uid: meta.uid(),
+        //                         gid: meta.gid(),
+        //                         rdev: meta.rdev() as u32,
+        //                         flags: 0,
+        //                     },
+        //                 ));
+        //                 index += 1;
+        //             }
+        //             reply.ok();
+        //         } else {
+        //             log::error!(
+        //                 "_ino: {}, _fh: {}, _offset: {} not implement.",
+        //                 _ino,
+        //                 _fh,
+        //                 _offset,
+        //             );
+        //             reply.error(ENOSYS);
+        //         }
+        //     }
+        //     None => {
+        //         log::error!(
+        //             "inode: {} not found. cannot read dir. nodes: {:?}",
+        //             _ino,
+        //             self.inodes
+        //         );
+        //         return;
+        //     }
+        // }
 
         // self.with_node(_ino, |inode| {
         //     let mut index = 0u64;
@@ -1020,21 +1009,5 @@ impl Filesystem for CacheFs {
         // log::debug!("line: {}  ", std::line!());
 
         reply.error(ENOSYS);
-    }
-}
-
-impl CacheFs {
-    fn with_node<F>(&self, inode: u64, f: F)
-    where
-        F: Fn(Option<&Inode>),
-    {
-        if inode == 0 {
-            return;
-        }
-        let index: usize = inode.wrapping_sub(1) as usize;
-        if self.inodes.0.len() <= index {
-            return;
-        }
-        f(self.inodes.0.get(index))
     }
 }
