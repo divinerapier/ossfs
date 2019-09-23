@@ -40,100 +40,43 @@ impl<B: Backend + std::fmt::Debug> Fuse<B> {
 impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// Initialize filesystem.
     /// Called before any other filesystem method.
-    fn init(&mut self, req: &Request) -> Result<(), c_int> {
-        // log::debug!("line: {}  ", std::line!(), );
+    fn init(&mut self, _req: &Request) -> Result<(), c_int> {
+        // log::debug!("line: {}, func: {}", std::line!(), );
         Ok(())
     }
 
     /// Clean up filesystem.
     /// Called on filesystem exit.
-    fn destroy(&mut self, req: &Request) {
-        // log::debug!("line: {}  ", std::line!(), );
+    fn destroy(&mut self, _req: &Request) {
+        // log::debug!("line: {}, func: {}", std::line!(), );
     }
 
     /// Look up a directory entry by name and get its attributes.
     #[named]
-    fn lookup(&mut self, req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
-        log::info!(
-            "line: {}  func: {},  parent: {}, name: {}",
-            std::line!(),
-            function_name!(),
-            parent,
-            name.to_string_lossy()
-        );
-
+    fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         match self.fs.lookup(parent, name) {
             Some(attr) => {
+                log::info!(
+                    "line: {}, func: {},  parent: {}, name: {}, attr: {:?}",
+                    std::line!(),
+                    function_name!(),
+                    parent,
+                    name.to_string_lossy(),
+                    attr
+                );
                 reply.entry(&std::time::Duration::from_secs(3600), &attr, 0);
             }
-            None => reply.error(ENOSYS),
+            None => {
+                log::info!(
+                    "line: {}, func: {},  parent: {}, name: {}",
+                    std::line!(),
+                    function_name!(),
+                    parent,
+                    name.to_string_lossy()
+                );
+                reply.error(ENOSYS);
+            }
         }
-
-        // match self.inodes.get(_parent as usize) {
-        //     Some(parent_node) => {
-        //         let parent_node: &Inode = parent_node;
-        //     }
-        //     None => reply.error(ENOSYS),
-        // }
-
-        // match self.inodes.get(_parent as usize) {
-        //     Some(inode) => {
-        //         let inode: &Inode = inode;
-        //         log::info!(
-        //                 "line: {}  , parent: {}, name: {:?}, cache: {:?}, offset: {}, filetype: {:?}, path: {}",
-        //                 std::line!(),
-        //
-        //                 _parent,
-        //                 _name.to_string_lossy(),
-        //                 self.inodes,
-        //                 inode.offset,
-        //                 inode.filetype,
-        //                 inode.name,
-        //             );
-        //         reply.entry(
-        //             &std::time::Duration::from_secs(3600),
-        //             &FileAttr {
-        //                 /// Inode number
-        //                 ino: 0,
-        //                 /// Size in bytes
-        //                 size: 0,
-        //                 /// Size in blocks
-        //                 blocks: 0,
-        //                 /// Time of last access
-        //                 atime: std::time::SystemTime::now(),
-        //                 /// Time of last modification
-        //                 mtime: std::time::SystemTime::now(),
-        //                 /// Time of last change
-        //                 ctime: std::time::SystemTime::now(),
-        //                 /// Time of creation (macOS only)
-        //                 crtime: std::time::SystemTime::now(),
-        //                 /// Kind of file (directory, file, pipe, etc)
-        //                 kind: FileType::RegularFile,
-        //                 /// Permissions
-        //                 perm: 0o666,
-        //                 /// Number of hard links
-        //                 nlink: 0,
-        //                 /// User id
-        //                 uid: 0,
-        //                 /// Group id
-        //                 gid: 0,
-        //                 /// Rdev
-        //                 rdev: 0,
-        //                 /// Flags (macOS only, see chflags(2))
-        //                 flags: 0,
-        //             },
-        //             0,
-        //         );
-        //     }
-        //     None => {
-        //         log::warn!(
-        //             "not found parent: {}, name: {}",
-        //             _parent,
-        //             _name.to_string_lossy()
-        //         );
-        //         reply.error(ENOSYS);
-        //     }
-        // }
     }
 
     /// Forget about an inode.
@@ -144,10 +87,9 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// have a limited lifetime. On unmount it is not guaranteed, that all referenced
     /// inodes will receive a forget message.
     #[named]
-    fn forget(&mut self, req: &Request, _ino: u64, _nlookup: u64) {
-        // log::debug!("line: {}  ", std::line!());
+    fn forget(&mut self, _req: &Request, _ino: u64, _nlookup: u64) {
         log::info!(
-            "line: {}  func: {},  ino: {}, nlookup: {}",
+            "line: {}, func: {},  ino: {}, nlookup: {}",
             std::line!(),
             function_name!(),
             _ino,
@@ -157,120 +99,35 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
 
     /// Get file attributes.
     #[named]
-    fn getattr(&mut self, req: &Request, ino: u64, reply: ReplyAttr) {
-        log::info!(
-            "line: {}  func: {} , ino: {}",
-            std::line!(),
-            function_name!(),
-            ino
-        );
-
+    fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         match self.fs.getattr(ino) {
             Some(attr) => {
-                log::info!("ino: {}, attr: {:?}", ino, attr);
+                log::info!(
+                    "line: {}, func: {}, ino: {}, attr: {:?}",
+                    std::line!(),
+                    function_name!(),
+                    ino,
+                    attr
+                );
                 reply.attr(&std::time::Duration::from_secs(3600), &attr);
             }
             None => {
-                log::info!("not found. ino: {}", ino);
+                log::info!(
+                    "line: {}, func: {}, ino: {}, attr not found",
+                    std::line!(),
+                    function_name!(),
+                    ino,
+                );
                 reply.error(ENOSYS);
             }
         }
-
-        // if _ino == 0 {
-        //     panic!("_ino is zero")
-        // }
-        // if _ino == 0 {
-        //     panic!("invalid _ino 0");
-        // }
-        // if self.inodes.0.len() == 0 {
-        //     let meta: std::fs::Metadata = std::fs::metadata("/").unwrap();
-        //     self.inodes.0.push(Inode::new(
-        //         _ino,
-        //         _ino,
-        //         0,
-        //         meta.size(),
-        //         std::path::PathBuf::from("/"),
-        //         FileType::Directory,
-        //         FileAttr {
-        //             ino: _ino,
-        //             size: meta.size(),
-        //             blocks: meta.blocks(),
-        //             atime: std::time::UNIX_EPOCH
-        //                 .clone()
-        //                 .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-        //             mtime: std::time::UNIX_EPOCH
-        //                 .clone()
-        //                 .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
-        //             ctime: std::time::UNIX_EPOCH
-        //                 .clone()
-        //                 .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
-        //             /// Time of creation (macOS only)
-        //             crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
-        //             /// Kind of file (directory, file, pipe, etc)
-        //             kind: FileType::Directory,
-        //             /// Permissions
-        //             perm: 0o666,
-        //             /// Number of hard links
-        //             nlink: meta.nlink() as u32,
-        //             /// User id
-        //             uid: meta.uid(),
-        //             /// Group id
-        //             gid: meta.gid(),
-        //             /// Rdev
-        //             rdev: meta.rdev() as u32,
-        //             /// Flags (macOS only, see chflags(2))
-        //             flags: 0,
-        //         },
-        //     ));
-        // }
-        // reply.attr(
-        //     &std::time::Duration::from_secs(3600),
-        //     &self.inodes.0[_ino.wrapping_sub(1) as usize].attr,
-        // );
-
-        // // if _ino == 1 {
-        // //     reply.attr(&std::time::Duration::from_secs(3600), &self.inodes[0].attr);
-        // // // let meta: std::fs::Metadata = std::fs::metadata("/").unwrap();
-        // // // let file_type = if meta.file_type().is_dir() {
-        // // //     FileType::Directory
-        // // // } else if meta.file_type().is_file() {
-        // // //     FileType::RegularFile
-        // // // } else if meta.file_type().is_symlink() {
-        // // //     FileType::Symlink
-        // // // } else {
-        // // //     FileType::BlockDevice
-        // // // };
-        // // // self.inodes.push(Inode::new(
-        // // //     _ino,
-        // // //     _ino,
-        // // //     0,
-        // // //     0,
-        // // //     String::from("/"),
-        // // //     FileType::Directory,
-        // // // ));
-        // // } else {
-        // //     match self.inode_cache.get(&_ino) {
-        // //         Some(inode) => log::warn!(
-        // //             "line: {}, ino: {}, offset: {}, filetype: {:?}, name: {}",
-        // //             std::line!(),
-        // //             _ino,
-        // //             inode.offset,
-        // //             inode.filetype,
-        // //             inode.name,
-        // //         ),
-        // //         None => {
-        // //             log::error!("ino: {} not found", _ino);
-        // //             reply.error(ENOSYS);
-        // //         }
-        // //     }
-        // // }
     }
 
     /// Set file attributes.
     #[named]
     fn setattr(
         &mut self,
-        req: &Request<'_>,
+        _req: &Request<'_>,
         _ino: u64,
         _mode: Option<u32>,
         _uid: Option<u32>,
@@ -285,16 +142,35 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _flags: Option<u32>,
         reply: ReplyAttr,
     ) {
-        log::debug!("line: {} func: {} inode: {:?}, mode: {:?}, uid: {:?}, gid: {:?}, size: {:?}, atime: {:?}, mtime: {:?}, fh: {:?}, crtime: {:?}, bkuptime: {:?}, flag: {:?}", 
-        std::line!(), function_name!(),
-        _ino, _mode, _uid, _gid, _size, _atime, _mtime, _fh, _crtime, _chgtime, _bkuptime);
+        log::debug!(
+            "line: {}, func: {}, inode: {:?}, mode: {:?}, uid: {:?}, gid: {:?}, size: {:?}, atime: {:?}, mtime: {:?}, fh: {:?}, crtime: {:?}, bkuptime: {:?}, flag: {:?}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _mode,
+            _uid,
+            _gid,
+            _size,
+            _atime,
+            _mtime,
+            _fh,
+            _crtime,
+            _chgtime,
+            _bkuptime
+        );
 
         reply.error(ENOSYS);
     }
 
     /// Read symbolic link.
-    fn readlink(&mut self, req: &Request, _ino: u64, reply: ReplyData) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn readlink(&mut self, _req: &Request, _ino: u64, reply: ReplyData) {
+        log::debug!(
+            "line: {}, func: {}, ino: {}",
+            std::line!(),
+            function_name!(),
+            _ino
+        );
         reply.error(ENOSYS);
     }
 
@@ -303,7 +179,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn mknod(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _parent: u64,
         _name: &OsStr,
         _mode: u32,
@@ -311,7 +187,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyEntry,
     ) {
         log::warn!(
-            "line: {} func: {} , parent: {}, name: {}, mode: {}, rdev: {}",
+            "line: {}, func: {}, parent: {}, name: {}, mode: {}, rdev: {}",
             std::line!(),
             function_name!(),
             _parent,
@@ -324,66 +200,97 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     }
 
     /// Create a directory.
-    fn mkdir(&mut self, req: &Request, _parent: u64, _name: &OsStr, _mode: u32, reply: ReplyEntry) {
-        // log::debug!("line: {}  ", std::line!());
+    fn mkdir(
+        &mut self,
+        _req: &Request,
+        _parent: u64,
+        _name: &OsStr,
+        _mode: u32,
+        reply: ReplyEntry,
+    ) {
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
 
     /// Remove a file.
-    fn unlink(&mut self, req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}  ", std::line!());
+    fn unlink(&mut self, _req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEmpty) {
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
 
     /// Remove a directory.
-    fn rmdir(&mut self, req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}  ", std::line!());
+    fn rmdir(&mut self, _req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEmpty) {
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
 
     /// Create a symbolic link.
+    #[named]
     fn symlink(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _parent: u64,
         _name: &OsStr,
         _link: &Path,
         reply: ReplyEntry,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        log::debug!(
+            "line: {}, func: {}, parent: {}, name: {:?}, link: {:?}",
+            std::line!(),
+            function_name!(),
+            _parent,
+            _name,
+            _link
+        );
 
         reply.error(ENOSYS);
     }
 
     /// Rename a file.
+    #[named]
     fn rename(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _parent: u64,
         _name: &OsStr,
         _newparent: u64,
         _newname: &OsStr,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        log::debug!(
+            "line: {}, func: {}, parent: {}, name: {:?}, newparent: {}, newname: {:?}",
+            std::line!(),
+            function_name!(),
+            _parent,
+            _name,
+            _newparent,
+            _newname
+        );
 
         reply.error(ENOSYS);
     }
 
     /// Create a hard link.
+    #[named]
     fn link(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _ino: u64,
         _newparent: u64,
         _newname: &OsStr,
         reply: ReplyEntry,
     ) {
-        // log::debug!("line: {}  ", std::line!());
-
+        log::debug!(
+            "line: {}, func: {}, ino: {}, newparent: {}, newname: {:?}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _newparent,
+            _newname
+        );
         reply.error(ENOSYS);
     }
 
@@ -395,8 +302,15 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// anything in fh. There are also some flags (direct_io, keep_cache) which the
     /// filesystem may set, to change the way the file is opened. See fuse_file_info
     /// structure in <fuse_common.h> for more details.
-    fn open(&mut self, req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
-        log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn open(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
+        log::debug!(
+            "line: {}, func: {}, ino: {}, flags: {}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _flags
+        );
 
         reply.opened(0, 0);
     }
@@ -408,16 +322,17 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// return value of the read system call will reflect the return value of this
     /// operation. fh will contain the value set by the open method, or will be undefined
     /// if the open method didn't set any value.
+    #[named]
     fn read(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _ino: u64,
         _fh: u64,
         _offset: i64,
         _size: u32,
         reply: ReplyData,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -428,9 +343,10 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// which case the return value of the write system call will reflect the return
     /// value of this operation. fh will contain the value set by the open method, or
     /// will be undefined if the open method didn't set any value.
+    #[named]
     fn write(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _ino: u64,
         _fh: u64,
         _offset: i64,
@@ -438,7 +354,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _flags: u32,
         reply: ReplyWrite,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -453,8 +369,9 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// is not forced to flush pending writes. One reason to flush data, is if the
     /// filesystem wants to return write errors. If the filesystem supports file locking
     /// operations (setlk, getlk) it should remove all locks belonging to 'lock_owner'.
-    fn flush(&mut self, req: &Request, _ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn flush(&mut self, _req: &Request, _ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -467,9 +384,10 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// the release. fh will contain the value set by the open method, or will be undefined
     /// if the open method didn't set any value. flags will contain the same flags as for
     /// open.
+    #[named]
     fn release(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _ino: u64,
         _fh: u64,
         _flags: u32,
@@ -477,7 +395,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _flush: bool,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.ok();
     }
@@ -485,8 +403,9 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// Synchronize file contents.
     /// If the datasync parameter is non-zero, then only the user data should be flushed,
     /// not the meta data.
-    fn fsync(&mut self, req: &Request, _ino: u64, _fh: u64, _datasync: bool, reply: ReplyEmpty) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn fsync(&mut self, _req: &Request, _ino: u64, _fh: u64, _datasync: bool, reply: ReplyEmpty) {
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -499,9 +418,9 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// directory stream operations in case the contents of the directory can change
     /// between opendir and releasedir.
     #[named]
-    fn opendir(&mut self, req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
+    fn opendir(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
         log::info!(
-            "line: {}  func: {} _ino: {}, _flags: {}",
+            "line: {}, func: {} _ino: {}, _flags: {}",
             std::line!(),
             function_name!(),
             _ino,
@@ -526,22 +445,21 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn readdir(
         &mut self,
-        req: &Request,
+        _req: &Request,
         ino: u64,
         fh: u64,
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
+        let children = self.fs.readdir(ino, fh, offset);
         log::info!(
-            "line: {} func: {} , _ino: {}, _fh: {}, _offset: {}",
+            "line: {}, func: {}, _ino: {}, _fh: {}, _offset: {}",
             std::line!(),
             function_name!(),
             ino,
             fh,
             offset
         );
-
-        let children = self.fs.readdir(ino, fh, offset);
         for child in children {
             reply.add(
                 child.inode.unwrap(),
@@ -796,8 +714,9 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// For every opendir call there will be exactly one releasedir call. fh will
     /// contain the value set by the opendir method, or will be undefined if the
     /// opendir method didn't set any value.
-    fn releasedir(&mut self, req: &Request, _ino: u64, _fh: u64, _flags: u32, reply: ReplyEmpty) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn releasedir(&mut self, _req: &Request, _ino: u64, _fh: u64, _flags: u32, reply: ReplyEmpty) {
+        // log::debug!("line: {}, func: {}", std::line!());
         reply.ok();
     }
 
@@ -805,63 +724,59 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// If the datasync parameter is set, then only the directory contents should
     /// be flushed, not the meta data. fh will contain the value set by the opendir
     /// method, or will be undefined if the opendir method didn't set any value.
-    fn fsyncdir(&mut self, req: &Request, _ino: u64, _fh: u64, _datasync: bool, reply: ReplyEmpty) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn fsyncdir(
+        &mut self,
+        _req: &Request,
+        _ino: u64,
+        _fh: u64,
+        _datasync: bool,
+        reply: ReplyEmpty,
+    ) {
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
 
     /// Get file system statistics.
     #[named]
-    fn statfs(&mut self, req: &Request, _ino: u64, reply: ReplyStatfs) {
-        log::info!(
-            "line: {}  func: {}, ino: {}",
-            std::line!(),
-            function_name!(),
-            _ino
-        );
-        if _ino == 1 {
-            let stat: nix::sys::statfs::Statfs = nix::sys::statfs::statfs("/").unwrap();
-            #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
-            {
+    fn statfs(&mut self, _req: &Request, _ino: u64, reply: ReplyStatfs) {
+        match self.fs.statfs(_ino) {
+            Some(stat) => {
+                log::info!(
+                    "line: {}, func: {}, ino: {}, stat: {:?}",
+                    std::line!(),
+                    function_name!(),
+                    _ino,
+                    stat
+                );
                 reply.statfs(
-                    stat.blocks(),
-                    stat.blocks_free(),
-                    stat.blocks_available(),
-                    stat.files(),
-                    stat.files_free(),
-                    stat.block_size(),
-                    stat.maximum_name_length(),
-                    4096,
+                    stat.blocks,
+                    stat.block_size as u64,
+                    stat.blocks_available,
+                    stat.files,
+                    stat.files_free,
+                    stat.block_size,
+                    stat.namelen,
+                    stat.frsize,
                 );
             }
-            #[cfg(any(target_os = "ios", target_os = "macos",))]
-            {
-                reply.statfs(
-                    stat.blocks(),
-                    stat.blocks_free(),
-                    stat.blocks_available(),
-                    stat.files(),
-                    stat.files_free(),
-                    stat.block_size(),
-                    65535,
-                    4096,
+            None => {
+                log::info!(
+                    "line: {}, func: {}, ino: {}",
+                    std::line!(),
+                    function_name!(),
+                    _ino
                 );
-                log::info!("line: {}, blocks: {}, blocks_free: {}, blocks_available: {}, files: {}, files_free: {}", std::line!(),    stat.blocks(),
-                    stat.blocks_free(),
-                        stat.blocks_available(),
-                        stat.files(),
-                        stat.files_free());
             }
-        } else {
-            log::error!("statfs not implement for ino: {}", _ino);
         }
     }
 
     /// Set an extended attribute.
+    #[named]
     fn setxattr(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _ino: u64,
         _name: &OsStr,
         _value: &[u8],
@@ -869,7 +784,16 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _position: u32,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        log::debug!(
+            "line: {}, func: {}, ino: {}, name: {:?}, value: {:?} flags: {}, position: {}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _name,
+            _value,
+            _flags,
+            _position
+        );
 
         reply.error(ENOSYS);
     }
@@ -878,8 +802,23 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// If `size` is 0, the size of the value should be sent with `reply.size()`.
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
-    fn getxattr(&mut self, req: &Request, _ino: u64, _name: &OsStr, _size: u32, reply: ReplyXattr) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn getxattr(
+        &mut self,
+        _req: &Request,
+        _ino: u64,
+        _name: &OsStr,
+        _size: u32,
+        reply: ReplyXattr,
+    ) {
+        log::debug!(
+            "line: {}, func: {}, ino: {}, name: {:?}, size: {}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _name,
+            _size
+        );
 
         reply.error(ENOSYS);
     }
@@ -888,15 +827,29 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// If `size` is 0, the size of the value should be sent with `reply.size()`.
     /// If `size` is not 0, and the value fits, send it with `reply.data()`, or
     /// `reply.error(ERANGE)` if it doesn't.
-    fn listxattr(&mut self, req: &Request, _ino: u64, _size: u32, reply: ReplyXattr) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn listxattr(&mut self, _req: &Request, _ino: u64, _size: u32, reply: ReplyXattr) {
+        log::debug!(
+            "line: {}, func: {}, ino: {}, size: {}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _size
+        );
 
         reply.error(ENOSYS);
     }
 
     /// Remove an extended attribute.
-    fn removexattr(&mut self, req: &Request, _ino: u64, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn removexattr(&mut self, _req: &Request, _ino: u64, _name: &OsStr, reply: ReplyEmpty) {
+        log::debug!(
+            "line: {}, func: {}, ino: {}, name: {:?}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _name
+        );
 
         reply.error(ENOSYS);
     }
@@ -905,8 +858,15 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// This will be called for the access() system call. If the 'default_permissions'
     /// mount option is given, this method is not called. This method is not called
     /// under Linux kernel versions 2.4.x
-    fn access(&mut self, req: &Request, _ino: u64, _mask: u32, reply: ReplyEmpty) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn access(&mut self, _req: &Request, _ino: u64, _mask: u32, reply: ReplyEmpty) {
+        log::debug!(
+            "line: {}, func: {}, ino: {}, mask: {}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _mask
+        );
 
         reply.error(ENOSYS);
     }
@@ -921,24 +881,34 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// structure in <fuse_common.h> for more details. If this method is not
     /// implemented or under Linux kernel versions earlier than 2.6.15, the mknod()
     /// and open() methods will be called instead.
+    #[named]
     fn create(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _parent: u64,
         _name: &OsStr,
         _mode: u32,
         _flags: u32,
         reply: ReplyCreate,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        log::debug!(
+            "line: {}, func: {}, parent: {}, name: {:?}, mode: {}, flags: {}",
+            std::line!(),
+            function_name!(),
+            _parent,
+            _name,
+            _mode,
+            _flags
+        );
 
         reply.error(ENOSYS);
     }
 
     /// Test for a POSIX file lock.
+    #[named]
     fn getlk(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _ino: u64,
         _fh: u64,
         _lock_owner: u64,
@@ -948,7 +918,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _pid: u32,
         reply: ReplyLock,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -960,9 +930,10 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// used to fill in this field in getlk(). Note: if the locking methods are not
     /// implemented, the kernel will still allow file locking to work locally.
     /// Hence these are only interesting for network filesystems and similar.
+    #[named]
     fn setlk(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _ino: u64,
         _fh: u64,
         _lock_owner: u64,
@@ -973,7 +944,19 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _sleep: bool,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        log::debug!(
+            "line: {}, func: {}, ino: {}, fh: {}, lock_owner: {}, start: {}, end: {}, type: {}, pid: {}, sleep: {}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _fh,
+            _lock_owner,
+            _start,
+            _end,
+            _typ,
+            _pid,
+            _sleep
+        );
 
         reply.error(ENOSYS);
     }
@@ -981,8 +964,16 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// Map block index within file to block index within device.
     /// Note: This makes sense only for block device backed filesystems mounted
     /// with the 'blkdev' option
-    fn bmap(&mut self, req: &Request, _ino: u64, _blocksize: u32, _idx: u64, reply: ReplyBmap) {
-        // log::debug!("line: {}  ", std::line!());
+    #[named]
+    fn bmap(&mut self, _req: &Request, _ino: u64, _blocksize: u32, _idx: u64, reply: ReplyBmap) {
+        log::debug!(
+            "line: {}, func: {}, ino: {}, blocksize: {}, idx: {}",
+            std::line!(),
+            function_name!(),
+            _ino,
+            _blocksize,
+            _idx
+        );
 
         reply.error(ENOSYS);
     }
@@ -990,8 +981,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// macOS only: Rename the volume. Set fuse_init_out.flags during init to
     /// FUSE_VOL_RENAME to enable
     #[cfg(target_os = "macos")]
-    fn setvolname(&mut self, req: &Request, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}  ", std::line!());
+    fn setvolname(&mut self, _req: &Request, _name: &OsStr, reply: ReplyEmpty) {
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -1000,7 +991,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[cfg(target_os = "macos")]
     fn exchange(
         &mut self,
-        req: &Request,
+        _req: &Request,
         _parent: u64,
         _name: &OsStr,
         _newparent: u64,
@@ -1008,7 +999,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _options: u64,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}  ", std::line!());
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }
@@ -1016,8 +1007,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// macOS only: Query extended times (bkuptime and crtime). Set fuse_init_out.flags
     /// during init to FUSE_XTIMES to enable
     #[cfg(target_os = "macos")]
-    fn getxtimes(&mut self, req: &Request, _ino: u64, reply: ReplyXTimes) {
-        // log::debug!("line: {}  ", std::line!());
+    fn getxtimes(&mut self, _req: &Request, _ino: u64, reply: ReplyXTimes) {
+        // log::debug!("line: {}, func: {}", std::line!());
 
         reply.error(ENOSYS);
     }

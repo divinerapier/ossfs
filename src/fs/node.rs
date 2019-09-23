@@ -1,5 +1,5 @@
 use fuse::{FileAttr, FileType};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -18,7 +18,7 @@ pub struct Node {
 }
 
 impl Node {
-    fn new(
+    pub fn new(
         inode: u64,
         parent: u64,
         offset: u64,

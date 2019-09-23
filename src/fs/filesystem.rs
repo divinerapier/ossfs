@@ -1,7 +1,9 @@
 use super::backend::Backend;
 use super::node::Node;
+use super::stat::Stat;
 use fuse::{FileAttr, FileType};
 use std::ffi::OsStr;
+use std::path::PathBuf;
 
 // 用来保存所有的 Inode 信息, 同时可以从后端(backend)拉取数据或原信息
 #[derive(Debug)]
@@ -71,7 +73,65 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         }
     }
 
-    pub fn child_nodes(&self, parent_inode: u64) -> Vec<Node> {
-        unimplemented!()
+    pub fn statfs(&self, ino: u64) -> Option<Stat> {
+        if ino as usize >= self.nodes.len() {
+            log::warn!("ino: {}, length: {}", ino, self.nodes.len());
+            return None;
+        }
+        let node: &Node = &self.nodes[ino as usize];
+        match self.node_fullpath(&node) {
+            Some(fullpath) => match nix::sys::statfs::statfs(&fullpath) {
+                #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
+                Ok(stat) => Some(Stat {
+                    blocks: stat.blocks(),
+                    blocks_free: stat.blocks_free(),
+                    blocks_available: stat.blocks_available(),
+                    files: stat.files(),
+                    files_free: stat.files_free(),
+                    block_size: stat.block_size(),
+                    namelen: stat.maximum_name_length(),
+                    frsize: 4096,
+                }),
+                #[cfg(any(target_os = "ios", target_os = "macos",))]
+                Ok(stat) => Some(Stat {
+                    blocks: stat.blocks(),
+                    blocks_free: stat.blocks_free(),
+                    blocks_available: stat.blocks_available(),
+                    files: stat.files(),
+                    files_free: stat.files_free(),
+                    block_size: stat.block_size(),
+                    namelen: 65535,
+                    frsize: 4096,
+                }),
+                Err(err) => {
+                    println!("stat {:?}, error: {}", fullpath, err);
+                    None
+                }
+            },
+            None => None,
+        }
     }
+
+    pub fn node_fullpath<'a>(&self, node: &Node) -> Option<PathBuf> {
+        if node.inode.unwrap() == self.backend.root().inode.unwrap() {
+            return self.backend.root().path;
+        }
+        match self.nodes.get(node.parent.unwrap() as usize) {
+            Some(parent) => match self.node_fullpath(parent) {
+                Some(parent_path) => {
+                    return Some(parent_path.join(node.path.as_ref().unwrap()));
+                }
+                None => {
+                    panic!("node: {:?}, parent: {:?} path not found", node, parent);
+                }
+            },
+            None => {
+                panic!("why??? node: {:?} no parent!", node);
+            }
+        }
+    }
+
+    // pub fn child_nodes(&self, parent_inode: u64) -> Vec<Node> {
+    //     unimplemented!()
+    // }
 }

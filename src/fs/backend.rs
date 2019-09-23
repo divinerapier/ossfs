@@ -4,6 +4,7 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 use crate::fs::node::Node;
+use crate::fs::stat::Stat;
 
 pub trait Backend {
     fn root(&self) -> Node;
