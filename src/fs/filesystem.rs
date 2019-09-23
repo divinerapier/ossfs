@@ -50,6 +50,12 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         match self.nodes.get(parent_ino as usize) {
             Some(parent) => {
                 let parent: &Node = parent;
+                match self.node_fullpath(parent) {
+                    Some(fullpath) => {}
+                    None => {
+                        return Vec::new();
+                    }
+                }
                 match &parent.children {
                     Some(children) => {
                         let children: &[u64] = children;
