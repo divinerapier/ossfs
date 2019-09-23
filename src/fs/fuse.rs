@@ -23,7 +23,7 @@ where
 {
     fs: FileSystem<B>,
     path_cache: std::collections::HashMap<String, usize>,
-    next_inode: AtomicU64,
+    next_handle: AtomicU64,
 }
 
 impl<B: Backend + std::fmt::Debug> Fuse<B> {
@@ -32,7 +32,7 @@ impl<B: Backend + std::fmt::Debug> Fuse<B> {
             fs: FileSystem::new(backend),
             // inode_cache: HashMap::new(),
             path_cache: HashMap::new(),
-            next_inode: AtomicU64::new(2),
+            next_handle: AtomicU64::new(2),
         }
     }
 }
@@ -167,9 +167,11 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
 
         match self.fs.getattr(ino) {
             Some(attr) => {
+                log::info!("ino: {}, attr: {:?}", ino, attr);
                 reply.attr(&std::time::Duration::from_secs(3600), &attr);
             }
             None => {
+                log::info!("not found. ino: {}", ino);
                 reply.error(ENOSYS);
             }
         }
@@ -539,7 +541,16 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             offset
         );
 
-        self.fs.readdir(ino, fh, offset);
+        let children = self.fs.readdir(ino, fh, offset);
+        for child in children {
+            reply.add(
+                child.inode.unwrap(),
+                child.offset.unwrap() as i64,
+                child.filetype.unwrap(),
+                child.path.unwrap(),
+            );
+        }
+        reply.ok();
 
         // let mut index = 0;
         // let inode: Option<&Node> = self.inodes.get_node_by_inode(_ino);

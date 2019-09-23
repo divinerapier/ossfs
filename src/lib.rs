@@ -10,7 +10,7 @@ mod test {
         env_logger::from_env(env_logger::Env::default().default_filter_or("trace")).init();
         log::set_max_level(log::LevelFilter::max());
 
-        let fs = super::fs::Fuse::new(super::fs::SimpleBackend {});
+        let fs = super::fs::Fuse::new(super::fs::SimpleBackend::new("/"));
         let mountpoint = "./mnt";
         let options = ["-o", "ro", "-o", "fsname=cachefs"]
             .iter()

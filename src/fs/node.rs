@@ -1,20 +1,20 @@
-use fuse::{FileAttr, FileType, Reply};
+use fuse::{FileAttr, FileType};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Node {
     // inode of it self
-    pub inode: u64,
+    pub inode: Option<u64>,
     // inode id of parent, parent of root is also root
-    pub parent: u64,
+    pub parent: Option<u64>,
     // block offset
-    pub offset: u64,
+    pub offset: Option<u64>,
     // size of current node
-    pub size: u64,
-    pub path: std::path::PathBuf,
-    pub filetype: FileType,
-    pub attr: FileAttr,
-    pub children: Vec<u64>,
+    pub size: Option<u64>,
+    pub path: Option<PathBuf>,
+    pub filetype: Option<FileType>,
+    pub attr: Option<FileAttr>,
+    pub children: Option<Vec<u64>>,
 }
 
 impl Node {
@@ -28,23 +28,33 @@ impl Node {
         attr: FileAttr,
     ) -> Node {
         Node {
-            inode,
-            parent,
-            offset,
-            size,
-            path,
-            filetype,
-            attr,
-            children: Vec::new(),
+            inode: Some(inode),
+            parent: Some(parent),
+            offset: Some(offset),
+            size: Some(size),
+            path: Some(path),
+            filetype: Some(filetype),
+            attr: Some(attr),
+            children: if filetype == FileType::Directory {
+                Some(Vec::new())
+            } else {
+                None
+            },
         }
     }
+}
 
-    fn add_child(&mut self, child: u64) {
-        for c in &self.children {
-            if *c == child {
-                return;
-            }
+impl Default for Node {
+    fn default() -> Node {
+        Node {
+            inode: None,
+            parent: None,
+            offset: None,
+            size: None,
+            path: None,
+            filetype: None,
+            attr: None,
+            children: None,
         }
-        self.children.push(child);
     }
 }
