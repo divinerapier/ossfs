@@ -51,7 +51,17 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             Some(parent) => {
                 let parent: &Node = parent;
                 match self.node_fullpath(parent) {
-                    Some(fullpath) => {}
+                    Some(fullpath) => match self.backend.readdir(fullpath) {
+                        Some(mut children) => {
+                            for child in &children {
+                                let child: &Node = child;
+                                // child.inode = Some(self)
+                            }
+                        }
+                        None => {
+                            return Vec::new();
+                        }
+                    },
                     None => {
                         return Vec::new();
                     }
