@@ -453,12 +453,13 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     ) {
         let children = self.fs.readdir(ino, fh, offset);
         log::info!(
-            "line: {}, func: {}, _ino: {}, _fh: {}, _offset: {}",
+            "line: {}, func: {}, _ino: {}, _fh: {}, _offset: {}, children: {:?}",
             std::line!(),
             function_name!(),
             ino,
             fh,
-            offset
+            offset,
+            children
         );
         for child in children {
             reply.add(

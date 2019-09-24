@@ -2,8 +2,10 @@ use super::backend::Backend;
 use super::node::Node;
 use super::stat::Stat;
 use fuse::{FileAttr, FileType};
+use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::sync::RwLock;
 
 // 用来保存所有的 Inode 信息, 同时可以从后端(backend)拉取数据或原信息
 #[derive(Debug)]
@@ -12,7 +14,7 @@ where
     B: Backend + std::fmt::Debug,
 {
     backend: B,
-    nodes: Vec<Node>,
+    nodes: RwLock<RefCell<Vec<Node>>>,
 }
 
 impl<B: Backend + std::fmt::Debug> FileSystem<B> {
@@ -20,43 +22,60 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let root = backend.root();
         FileSystem {
             backend,
-            nodes: vec![Node::default(), root], // ino = 1 is an empty node, just a placeholder
+            nodes: RwLock::new(RefCell::new(vec![Node::default(), root])), // ino = 0 is an empty node, just a placeholder
         }
     }
 
     pub fn lookup(&self, ino: u64, name: &OsStr) -> Option<FileAttr> {
-        if ino as usize >= self.nodes.len() {
+        let nodes = self.nodes.read().unwrap();
+        if ino as usize >= nodes.borrow().len() {
             return None;
         }
         None
     }
 
     pub fn getattr(&self, ino: u64) -> Option<FileAttr> {
-        if ino as usize >= self.nodes.len() {
+        let nodes = self.nodes.read().unwrap();
+        if ino as usize >= nodes.borrow().len() {
             return None;
         }
-        match self.nodes.get(ino as usize) {
-            Some(node) => node.attr,
+        let nodes = nodes.borrow();
+        match nodes.get(ino as usize) {
+            Some(node) => node.attr.clone(),
             None => None,
         }
     }
 
     pub fn readdir(&self, parent_ino: u64, file_handle: u64, offset: i64) -> Vec<Node> {
-        if parent_ino as usize >= self.nodes.len() {
-            log::warn!("parent ino: {}, length: {}", parent_ino, self.nodes.len());
+        let nodes = self.nodes.write().unwrap();
+        let length = nodes.borrow().len();
+        if parent_ino as usize >= length {
+            log::warn!("parent ino: {}, length: {}", parent_ino, length);
             return Vec::new();
         }
-        let mut nodes = vec![];
-        match self.nodes.get(parent_ino as usize) {
+        let mut nodes = nodes.borrow_mut();
+        let mut result = vec![];
+        match nodes.get(parent_ino as usize) {
             Some(parent) => {
                 let parent: &Node = parent;
-                match self.node_fullpath(parent) {
-                    Some(fullpath) => match self.backend.readdir(fullpath) {
-                        Some(mut children) => {
-                            for child in &children {
-                                let child: &Node = child;
-                                // child.inode = Some(self)
+                let current_children: Vec<Node> = parent.children(&nodes);
+                match self.node_fullpath(parent, &nodes) {
+                    Some(fullpath) => match self.backend.readdir(fullpath, offset as usize) {
+                        Some(mut backend_children) => {
+                            for child in &mut backend_children {
+                                let mut child: &mut Node = child;
+                                for current_child in &current_children {
+                                    if current_child.path.as_ref().unwrap().to_str()
+                                        == child.path.as_ref().unwrap().to_str()
+                                    {
+                                        nodes[current_child.inode.unwrap() as usize].attr = None
+                                    }
+                                }
+                                child.parent = parent.inode;
+                                child.inode = Some(nodes.len() as u64);
+                                result.push(child.clone());
                             }
+                            return backend_children;
                         }
                         None => {
                             return Vec::new();
@@ -66,36 +85,21 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                         return Vec::new();
                     }
                 }
-                match &parent.children {
-                    Some(children) => {
-                        let children: &[u64] = children;
-                        for &child_ino in children.iter().skip(offset as usize) {
-                            match self.nodes.get(child_ino as usize) {
-                                Some(child) => {
-                                    nodes.push(child.clone());
-                                }
-                                None => panic!(
-                                    "??? parent: {}, file_handle: {}, offset: {}",
-                                    parent_ino, file_handle, offset
-                                ),
-                            }
-                        }
-                        nodes
-                    }
-                    None => nodes,
-                }
             }
-            None => nodes,
+            None => result,
         }
     }
 
     pub fn statfs(&self, ino: u64) -> Option<Stat> {
-        if ino as usize >= self.nodes.len() {
-            log::warn!("ino: {}, length: {}", ino, self.nodes.len());
+        let nodes: std::sync::RwLockReadGuard<RefCell<Vec<Node>>> = self.nodes.read().unwrap();
+        let length = nodes.borrow().len();
+        if ino as usize >= length {
+            log::warn!("ino: {}, length: {}", ino, length);
             return None;
         }
-        let node: &Node = &self.nodes[ino as usize];
-        match self.node_fullpath(&node) {
+        let nodes = nodes.borrow();
+        let node: &Node = &nodes[ino as usize];
+        match self.node_fullpath(&node, &nodes) {
             Some(fullpath) => match nix::sys::statfs::statfs(&fullpath) {
                 #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
                 Ok(stat) => Some(Stat {
@@ -128,12 +132,13 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         }
     }
 
-    pub fn node_fullpath<'a>(&self, node: &Node) -> Option<PathBuf> {
+    pub fn node_fullpath<'a>(&self, node: &Node, nodes: &[Node]) -> Option<PathBuf> {
         if node.inode.unwrap() == self.backend.root().inode.unwrap() {
             return self.backend.root().path;
         }
-        match self.nodes.get(node.parent.unwrap() as usize) {
-            Some(parent) => match self.node_fullpath(parent) {
+        // let nodes = self.nodes.read().unwrap();
+        match nodes.get(node.parent.unwrap() as usize) {
+            Some(parent) => match self.node_fullpath(parent, nodes) {
                 Some(parent_path) => {
                     return Some(parent_path.join(node.path.as_ref().unwrap()));
                 }

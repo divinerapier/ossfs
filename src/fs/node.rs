@@ -1,5 +1,6 @@
 use fuse::{FileAttr, FileType};
 use std::path::{Path, PathBuf};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -41,6 +42,14 @@ impl Node {
                 None
             },
         }
+    }
+
+    pub fn children(&self, nodes: &[Node]) -> Vec<Node> {
+        let mut result = Vec::new();
+        for &inode in self.children.as_ref().unwrap() {
+            result.push(nodes[inode as usize].clone());
+        }
+        result
     }
 }
 

@@ -17,3 +17,7 @@ Cargo.lock
 /target
 #**/*.rs.bk
 #Cargo.lock
+
+# IDE
+.idea
+.vscode

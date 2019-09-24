@@ -9,7 +9,7 @@ use crate::fs::stat::Stat;
 pub trait Backend {
     fn root(&self) -> Node;
     fn getattr<P: AsRef<Path>>(&self, path: P) -> FileAttr;
-    fn readdir<P: AsRef<Path>>(&self, path: P) -> Option<Vec<Node>>;
+    fn readdir<P: AsRef<Path>>(&self, path: P, offset: usize) -> Option<Vec<Node>>;
 }
 
 #[derive(Debug)]
@@ -118,10 +118,10 @@ impl Backend for SimpleBackend {
             flags: 0,
         }
     }
-    fn readdir<P: AsRef<Path>>(&self, path: P) -> Option<Vec<Node>> {
+    fn readdir<P: AsRef<Path>>(&self, path: P, offset: usize) -> Option<Vec<Node>> {
         let mut result = vec![];
         let list: std::fs::ReadDir = std::fs::read_dir(path).unwrap();
-        for (index, entry) in list.enumerate() {
+        for (index, entry) in list.skip(offset).enumerate() {
             let entry: std::fs::DirEntry = entry.unwrap();
             let meta: std::fs::Metadata = entry.metadata().unwrap();
             let node: Node = Node {
