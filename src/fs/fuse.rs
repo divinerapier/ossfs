@@ -417,26 +417,26 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// anything in fh, though that makes it impossible to implement standard conforming
     /// directory stream operations in case the contents of the directory can change
     /// between opendir and releasedir.
-    #[named]
-    fn opendir(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
-        log::info!(
-            "line: {}, func: {} _ino: {}, _flags: {}",
-            std::line!(),
-            function_name!(),
-            _ino,
-            _flags
-        );
+    // #[named]
+    // fn opendir(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
+    //     log::info!(
+    //         "line: {}, func: {} _ino: {}, _flags: {}",
+    //         std::line!(),
+    //         function_name!(),
+    //         _ino,
+    //         _flags
+    //     );
 
-        if _ino == 0 {
-            panic!("open dir ino: 0");
-        }
+    //     if _ino == 0 {
+    //         panic!("open dir ino: 0");
+    //     }
 
-        if _ino == 1 {
-            reply.opened(1, 0);
-        } else {
-            reply.opened(0, 0);
-        }
-    }
+    //     if _ino == 1 {
+    //         reply.opened(1, 0);
+    //     } else {
+    //         reply.opened(0, 0);
+    //     }
+    // }
     /// Read directory.
     /// Send a buffer filled using buffer.fill(), with size not exceeding the
     /// requested size. Send an empty buffer on end of stream. fh will contain the
@@ -451,7 +451,28 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        let children = self.fs.readdir(ino, fh, offset);
+        log::info!(
+            "line: {}, func: {}, _ino: {}, _fh: {}, _offset: {}",
+            std::line!(),
+            function_name!(),
+            ino,
+            fh,
+            offset,
+        );
+        let children = match self.fs.readdir(ino, fh, offset) {
+            Some(children) => children,
+            None => {
+                log::info!(
+                    "line: {}, func: {}, _ino: {}, _fh: {}, _offset: {}",
+                    std::line!(),
+                    function_name!(),
+                    ino,
+                    fh,
+                    offset,
+                );
+                return;
+            }
+        };
         log::info!(
             "line: {}, func: {}, _ino: {}, _fh: {}, _offset: {}, children: {:?}",
             std::line!(),
@@ -462,253 +483,22 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             children
         );
         for child in children {
+            log::info!(
+                "line: {:#?}, inode: {:#?}, offset: {:?}, filetype: {:#?}, path: {:?}",
+                std::line!(),
+                child.inode.unwrap(),
+                child.offset.unwrap(),
+                child.filetype.unwrap(),
+                child.path.as_ref().unwrap()
+            );
             reply.add(
                 child.inode.unwrap(),
                 child.offset.unwrap() as i64,
                 child.filetype.unwrap(),
-                child.path.unwrap(),
+                child.path.as_ref().unwrap(),
             );
         }
         reply.ok();
-
-        // let mut index = 0;
-        // let inode: Option<&Node> = self.inodes.get_node_by_inode(_ino);
-        // match inode {
-        //     Some(inode) => {
-        //         let inode: &Node = inode;
-        //         if _ino == 1 {
-        //             let dir: std::fs::ReadDir = std::fs::read_dir("/").unwrap();
-        //             for entry in dir {
-        //                 let entry: std::fs::DirEntry = entry.unwrap();
-        //                 let filetype = if entry.metadata().unwrap().is_file() {
-        //                     FileType::RegularFile
-        //                 } else {
-        //                     FileType::Directory
-        //                 };
-        //                 let next_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-        //                 reply.add(next_inode, index as i64, filetype, entry.file_name());
-        //                 let filepath = std::path::PathBuf::from("/").join(entry.file_name());
-        //                 log::warn!(
-        //                     "parent: {}, ino: {}, offset: {}, file_name: {}, filepath: {:?}",
-        //                     _ino,
-        //                     next_inode,
-        //                     index,
-        //                     entry.file_name().to_string_lossy(),
-        //                     filepath,
-        //                 );
-
-        //                 let meta: std::fs::Metadata = std::fs::metadata(&filepath).unwrap();
-        //                 self.inodes.0.push(Inode::new(
-        //                     next_inode,
-        //                     _ino,
-        //                     index,
-        //                     meta.size(),
-        //                     inode.path.join(entry.file_name()),
-        //                     filetype,
-        //                     FileAttr {
-        //                         ino: next_inode,
-        //                         size: meta.size(),
-        //                         blocks: meta.blocks(),
-        //                         atime: std::time::UNIX_EPOCH
-        //                             .clone()
-        //                             .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-        //                         mtime: std::time::UNIX_EPOCH
-        //                             .clone()
-        //                             .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
-        //                         ctime: std::time::UNIX_EPOCH
-        //                             .clone()
-        //                             .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
-        //                         crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
-        //                         kind: filetype,
-        //                         perm: meta.mode() as u16,
-        //                         nlink: meta.nlink() as u32,
-        //                         uid: meta.uid(),
-        //                         gid: meta.gid(),
-        //                         rdev: meta.rdev() as u32,
-        //                         flags: 0,
-        //                     },
-        //                 ));
-        //                 index += 1;
-        //             }
-        //             reply.ok();
-        //         } else {
-        //             log::error!(
-        //                 "_ino: {}, _fh: {}, _offset: {} not implement.",
-        //                 _ino,
-        //                 _fh,
-        //                 _offset,
-        //             );
-        //             reply.error(ENOSYS);
-        //         }
-        //     }
-        //     None => {
-        //         log::error!(
-        //             "inode: {} not found. cannot read dir. nodes: {:?}",
-        //             _ino,
-        //             self.inodes
-        //         );
-        //         return;
-        //     }
-        // }
-
-        // self.with_node(_ino, |inode| {
-        //     let mut index = 0u64;
-        //     match inode {
-        //         Some(inode) => {
-        //             let inode: &Inode = inode;
-        //             if _ino == 1 {
-        //                 let dir: std::fs::ReadDir = std::fs::read_dir("/").unwrap();
-        //                 for entry in dir {
-        //                     let entry: std::fs::DirEntry = entry.unwrap();
-        //                     let filetype = if entry.metadata().unwrap().is_file() {
-        //                         FileType::RegularFile
-        //                     } else {
-        //                         FileType::Directory
-        //                     };
-        //                     let next_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-        //                     reply.add(next_inode, index as i64, filetype, entry.file_name());
-        //                     let filepath = std::path::PathBuf::from("/").join(entry.file_name());
-        //                     log::warn!(
-        //                         "parent: {}, ino: {}, offset: {}, file_name: {}, filepath: {:?}",
-        //                         _ino,
-        //                         next_inode,
-        //                         index,
-        //                         entry.file_name().to_string_lossy(),
-        //                         filepath,
-        //                     );
-
-        //                     let meta: std::fs::Metadata = std::fs::metadata(&filepath).unwrap();
-        //                     self.inodes.0.push(Inode::new(
-        //                         next_inode,
-        //                         _ino,
-        //                         index,
-        //                         meta.size(),
-        //                         inode.path.join(entry.file_name()),
-        //                         filetype,
-        //                         FileAttr {
-        //                             ino: next_inode,
-        //                             size: meta.size(),
-        //                             blocks: meta.blocks(),
-        //                             atime: std::time::UNIX_EPOCH.clone().add(
-        //                                 std::time::Duration::from_secs(meta.atime_nsec() as u64),
-        //                             ),
-        //                             mtime: std::time::UNIX_EPOCH.clone().add(
-        //                                 std::time::Duration::from_secs(meta.mtime_nsec() as u64),
-        //                             ),
-        //                             ctime: std::time::UNIX_EPOCH.clone().add(
-        //                                 std::time::Duration::from_secs(meta.ctime_nsec() as u64),
-        //                             ),
-        //                             crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
-        //                             kind: filetype,
-        //                             perm: meta.mode() as u16,
-        //                             nlink: meta.nlink() as u32,
-        //                             uid: meta.uid(),
-        //                             gid: meta.gid(),
-        //                             rdev: meta.rdev() as u32,
-        //                             flags: 0,
-        //                         },
-        //                     ));
-        //                     index += 1;
-        //                 }
-        //                 reply.ok();
-        //             } else {
-        //                 log::error!(
-        //                     "_ino: {}, _fh: {}, _offset: {} not implement.",
-        //                     _ino,
-        //                     _fh,
-        //                     _offset,
-        //                 );
-        //                 reply.error(ENOSYS);
-        //             }
-        //         }
-        //         None => {
-        //             log::error!(
-        //                 "inode: {} not found. cannot read dir. nodes: {:?}",
-        //                 _ino,
-        //                 self.inodes
-        //             );
-        //         }
-        //     };
-        // });
-
-        // let parent_node = self.inodes.get(_ino.wrapping_sub(1) as usize);
-
-        // match parent_node {
-        //     Some(parent_node) => {
-        //         let parent_node: &Inode = parent_node;
-        //         if _ino == 1 {
-        //             let dir: std::fs::ReadDir = std::fs::read_dir("/").unwrap();
-        //             for entry in dir {
-        //                 let entry: std::fs::DirEntry = entry.unwrap();
-        //                 let filetype = if entry.metadata().unwrap().is_file() {
-        //                     FileType::RegularFile
-        //                 } else {
-        //                     FileType::Directory
-        //                 };
-        //                 let next_inode = self.next_inode.fetch_add(1, Ordering::SeqCst);
-        //                 reply.add(next_inode, index as i64, filetype, entry.file_name());
-        //                 let filepath = std::path::PathBuf::from("/").join(entry.file_name());
-        //                 log::warn!(
-        //                     "parent: {}, ino: {}, offset: {}, file_name: {}, filepath: {:?}",
-        //                     _ino,
-        //                     next_inode,
-        //                     index,
-        //                     entry.file_name().to_string_lossy(),
-        //                     filepath,
-        //                 );
-
-        //                 let meta: std::fs::Metadata = std::fs::metadata(&filepath).unwrap();
-        //                 self.inodes.push(Inode::new(
-        //                     next_inode,
-        //                     _ino,
-        //                     index,
-        //                     meta.size(),
-        //                     parent_node.path.join(entry.file_name()),
-        //                     filetype,
-        //                     FileAttr {
-        //                         ino: next_inode,
-        //                         size: meta.size(),
-        //                         blocks: meta.blocks(),
-        //                         atime: std::time::UNIX_EPOCH
-        //                             .clone()
-        //                             .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-        //                         mtime: std::time::UNIX_EPOCH
-        //                             .clone()
-        //                             .add(std::time::Duration::from_secs(meta.mtime_nsec() as u64)),
-        //                         ctime: std::time::UNIX_EPOCH
-        //                             .clone()
-        //                             .add(std::time::Duration::from_secs(meta.ctime_nsec() as u64)),
-        //                         crtime: meta.created().unwrap_or(std::time::UNIX_EPOCH.clone()),
-        //                         kind: filetype,
-        //                         perm: meta.mode() as u16,
-        //                         nlink: meta.nlink() as u32,
-        //                         uid: meta.uid(),
-        //                         gid: meta.gid(),
-        //                         rdev: meta.rdev() as u32,
-        //                         flags: 0,
-        //                     },
-        //                 ));
-        //                 index += 1;
-        //             }
-        //             reply.ok();
-        //         } else {
-        //             log::error!(
-        //                 "_ino: {}, _fh: {}, _offset: {} not implement.",
-        //                 _ino,
-        //                 _fh,
-        //                 _offset,
-        //             );
-        //             reply.error(ENOSYS);
-        //         }
-        //     }
-        //     None => {
-        //         log::error!(
-        //             "inode: {} not found. cannot read dir. nodes: {:?}",
-        //             _ino,
-        //             self.inodes
-        //         );
-        //     }
-        // };
     }
 
     /// Release an open directory.

@@ -1,6 +1,6 @@
 use fuse::{FileAttr, FileType};
-use std::path::{Path, PathBuf};
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -15,7 +15,6 @@ pub struct Node {
     pub path: Option<PathBuf>,
     pub filetype: Option<FileType>,
     pub attr: Option<FileAttr>,
-    pub children: Option<Vec<u64>>,
 }
 
 impl Node {
@@ -36,20 +35,7 @@ impl Node {
             path: Some(path),
             filetype: Some(filetype),
             attr: Some(attr),
-            children: if filetype == FileType::Directory {
-                Some(Vec::new())
-            } else {
-                None
-            },
         }
-    }
-
-    pub fn children(&self, nodes: &[Node]) -> Vec<Node> {
-        let mut result = Vec::new();
-        for &inode in self.children.as_ref().unwrap() {
-            result.push(nodes[inode as usize].clone());
-        }
-        result
     }
 }
 
@@ -63,7 +49,6 @@ impl Default for Node {
             path: None,
             filetype: None,
             attr: None,
-            children: None,
         }
     }
 }

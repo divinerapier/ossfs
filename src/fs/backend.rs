@@ -1,4 +1,5 @@
 use fuse::{FileAttr, FileType};
+use std::fmt::Debug;
 use std::ops::Add;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -8,8 +9,9 @@ use crate::fs::stat::Stat;
 
 pub trait Backend {
     fn root(&self) -> Node;
-    fn getattr<P: AsRef<Path>>(&self, path: P) -> FileAttr;
-    fn readdir<P: AsRef<Path>>(&self, path: P, offset: usize) -> Option<Vec<Node>>;
+    fn getattr<P: AsRef<Path> + Debug>(&self, path: P) -> Option<FileAttr>;
+    fn readdir<P: AsRef<Path> + Debug>(&self, path: P, offset: usize) -> Option<Vec<Node>>;
+    fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat>;
 }
 
 #[derive(Debug)]
@@ -74,13 +76,12 @@ impl Backend for SimpleBackend {
             path: Some(Path::new(self.root).to_path_buf()),
             filetype: Some(FileType::Directory),
             attr: Some(self.root_attr),
-            children: Some(Vec::new()),
         }
     }
 
-    fn getattr<P: AsRef<Path>>(&self, path: P) -> FileAttr {
-        let meta: std::fs::Metadata = std::fs::metadata(path).unwrap();
-        FileAttr {
+    fn getattr<P: AsRef<Path>>(&self, path: P) -> Option<FileAttr> {
+        let meta: std::fs::Metadata = std::fs::metadata(path).ok()?;
+        Some(FileAttr {
             ino: meta.ino(),
             /// Size in bytes
             size: meta.size(),
@@ -116,20 +117,54 @@ impl Backend for SimpleBackend {
             rdev: meta.rdev() as u32,
             /// Flags (macOS only, see chflags(2))
             flags: 0,
-        }
+        })
     }
-    fn readdir<P: AsRef<Path>>(&self, path: P, offset: usize) -> Option<Vec<Node>> {
+    fn readdir<P: AsRef<Path> + Debug>(&self, path: P, offset: usize) -> Option<Vec<Node>> {
         let mut result = vec![];
-        let list: std::fs::ReadDir = std::fs::read_dir(path).unwrap();
+        // Add . / ..
+        log::debug!(
+            "line: {:#?}, path: {:#?}, offset: {:#}",
+            std::line!(),
+            path,
+            offset
+        );
+        let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
+            Ok(dir) => {
+                log::debug!(
+                    "line: {:#?}, path: {:#?}, offset: {:#?}, dir: {:#?}",
+                    std::line!(),
+                    path,
+                    offset,
+                    dir
+                );
+                dir
+            }
+            Err(e) => {
+                println!(
+                    "line: {:#?}, path: {:?}, offset: {}, error: {}",
+                    std::line!(),
+                    path,
+                    offset,
+                    e
+                );
+                return None;
+            }
+        };
         for (index, entry) in list.skip(offset).enumerate() {
             let entry: std::fs::DirEntry = entry.unwrap();
             let meta: std::fs::Metadata = entry.metadata().unwrap();
+            log::debug!(
+                "line: {:#?}, path: {:#?}, sub path: {:#?}",
+                std::line!(),
+                path,
+                entry.path()
+            );
             let node: Node = Node {
                 inode: None,
                 parent: None,
                 offset: Some(index as u64),
                 size: Some(meta.size()),
-                path: Some(PathBuf::from(entry.file_name())),
+                path: Some(PathBuf::from(entry.path())),
                 filetype: if meta.is_dir() {
                     Some(FileType::Directory)
                 } else {
@@ -172,14 +207,41 @@ impl Backend for SimpleBackend {
                     /// Flags (macOS only, see chflags(2))
                     flags: 0,
                 }),
-                children: if meta.is_dir() {
-                    Some(Vec::new())
-                } else {
-                    None
-                },
             };
             result.push(node);
         }
+        log::debug!("line: {:#?}, nodes: {:#?}", std::line!(), result);
         Some(result)
+    }
+    fn statfs<P: AsRef<Path>>(&self, path: P) -> Option<Stat> {
+        // let metadata: std::fs::Metadata = std::fs::metadata(path).unwrap();
+        match nix::sys::statfs::statfs(path.as_ref()) {
+            #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
+            Ok(stat) => Some(Stat {
+                blocks: stat.blocks(),
+                blocks_free: stat.blocks_free(),
+                blocks_available: stat.blocks_available(),
+                files: stat.files(),
+                files_free: stat.files_free(),
+                block_size: stat.block_size(),
+                namelen: stat.maximum_name_length(),
+                frsize: 4096,
+            }),
+            #[cfg(any(target_os = "ios", target_os = "macos",))]
+            Ok(stat) => Some(Stat {
+                blocks: stat.blocks(),
+                blocks_free: stat.blocks_free(),
+                blocks_available: stat.blocks_available(),
+                files: stat.files(),
+                files_free: stat.files_free(),
+                block_size: stat.block_size(),
+                namelen: 65535,
+                frsize: 4096,
+            }),
+            Err(err) => {
+                println!("stat failed, error: {}", err);
+                None
+            }
+        }
     }
 }
