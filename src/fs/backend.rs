@@ -26,7 +26,7 @@ impl SimpleBackend {
         SimpleBackend {
             root,
             root_attr: FileAttr {
-                ino: meta.ino(),
+                ino: 1,
                 /// Size in bytes
                 size: meta.size(),
                 /// Size in blocks

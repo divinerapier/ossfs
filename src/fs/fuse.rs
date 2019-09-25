@@ -207,7 +207,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                 reply.entry(
                     &std::time::Duration::from_secs(3600),
                     &node.attr.unwrap(),
-                    1,
+                    0,
                 );
             }
             None => {

@@ -222,7 +222,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let child_path = parent_path.join(name);
         let node = Node::new(
             self.ino_mapper.len() as u64,
-            parent_node.inode.unwrap(),
+            parent,
             self.ino_mapper.len() as u64,
             0,
             child_path,
