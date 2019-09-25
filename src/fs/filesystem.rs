@@ -1,7 +1,7 @@
 use super::backend::Backend;
 use super::node::Node;
 use super::stat::Stat;
-use fuse::FileAttr;
+use fuse::{FileAttr, FileType};
 use rose_tree::petgraph::graph::DefaultIx;
 use rose_tree::petgraph::graph::NodeIndex;
 use rose_tree::RoseTree;
@@ -192,7 +192,73 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         }
     }
 
-    // pub fn child_nodes(&self, parent_inode: u64) -> Vec<Node> {
-    //     unimplemented!()
-    // }
+    pub fn mkdir(&mut self, parent: u64, name: &OsStr, mode: u32) -> Option<Node> {
+        let parent_index = self.ino_mapper.get(&parent);
+        let parent_index = match parent_index {
+            Some(parent_index) => *parent_index,
+            None => {
+                log::error!(
+                    "line: {:#?}, parent: {}, name: {:#?}, mode: {}, index: {:#?}",
+                    std::line!(),
+                    parent,
+                    name,
+                    mode,
+                    parent_index
+                );
+                return None;
+            }
+        };
+        // let parent_node: Node = self.nodes_tree.index(parent_index).clone();
+        let mut walker = self.nodes_tree.walk_children(parent_index);
+        while let Some(child_node_index) = walker.next(&self.nodes_tree) {
+            let child_node: &Node = self.nodes_tree.index(child_node_index);
+            if child_node.path.as_ref().unwrap().file_name().unwrap() == name {
+                log::warn!("parent: {}, name: {:#?} exists", parent, name);
+                return None;
+            }
+        }
+        let parent_node = self.nodes_tree.index(parent_index);
+        let parent_path = parent_node.path.as_ref().unwrap();
+        let child_path = parent_path.join(name);
+        let node = Node::new(
+            self.ino_mapper.len() as u64,
+            parent_node.inode.unwrap(),
+            self.ino_mapper.len() as u64,
+            0,
+            child_path,
+            FileType::Directory,
+            FileAttr {
+                ino: self.ino_mapper.len() as u64,
+                size: 0,
+                /// Size in blocks
+                blocks: 1,
+                /// Time of last access
+                atime: std::time::SystemTime::now(),
+                /// Time of last modification
+                mtime: std::time::SystemTime::now(),
+                /// Time of last change
+                ctime: std::time::SystemTime::now(),
+                /// Time of creation (macOS only)
+                crtime: std::time::SystemTime::now(),
+                /// Kind of file (directory, file, pipe, etc)
+                kind: FileType::Directory,
+                /// Permissions
+                perm: mode as u16,
+                /// Number of hard links
+                nlink: 0,
+                /// User id
+                uid: 0,
+                /// Group id
+                gid: 0,
+                /// Rdev
+                rdev: 0,
+                /// Flags (macOS only, see chflags(2))
+                flags: 0,
+            },
+        );
+        let node_index = self.nodes_tree.add_child(parent_index, node.clone());
+        self.ino_mapper
+            .insert(self.ino_mapper.len() as u64, node_index);
+        Some(node)
+    }
 }

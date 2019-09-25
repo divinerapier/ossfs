@@ -200,17 +200,27 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     }
 
     /// Create a directory.
-    fn mkdir(
-        &mut self,
-        _req: &Request,
-        _parent: u64,
-        _name: &OsStr,
-        _mode: u32,
-        reply: ReplyEntry,
-    ) {
+    fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, reply: ReplyEntry) {
         // log::debug!("line: {}, func: {}", std::line!());
-
-        reply.error(ENOSYS);
+        match self.fs.mkdir(parent, name, mode) {
+            Some(node) => {
+                reply.entry(
+                    &std::time::Duration::from_secs(3600),
+                    &node.attr.unwrap(),
+                    1,
+                );
+            }
+            None => {
+                log::debug!(
+                    "line: {}, parent: {}, name: {:#?}, mode: {}",
+                    std::line!(),
+                    parent,
+                    name,
+                    mode
+                );
+                reply.error(ENOSYS);
+            }
+        }
     }
 
     /// Remove a file.
