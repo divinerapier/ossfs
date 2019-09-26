@@ -5,7 +5,7 @@ use function_name::named;
 use super::backend::Backend;
 use super::filesystem::FileSystem;
 use super::node::Node;
-use libc::{c_int, ENOSYS};
+use libc::{c_int, ENOENT, ENOSYS};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ops::Add;
@@ -67,14 +67,14 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                 reply.entry(&std::time::Duration::from_secs(3600), &attr, 0);
             }
             None => {
-                log::info!(
+                log::error!(
                     "line: {}, func: {},  parent: {}, name: {}",
                     std::line!(),
                     function_name!(),
                     parent,
                     name.to_string_lossy()
                 );
-                reply.error(ENOSYS);
+                reply.error(ENOENT);
             }
         }
     }
@@ -200,8 +200,16 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     }
 
     /// Create a directory.
+    #[named]
     fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, reply: ReplyEntry) {
-        // log::debug!("line: {}, func: {}", std::line!());
+        log::debug!(
+            "line: {}, func: {}, parent: {}, name: {:?}, mode: {}",
+            std::line!(),
+            function_name!(),
+            parent,
+            name,
+            mode
+        );
         match self.fs.mkdir(parent, name, mode) {
             Some(node) => {
                 reply.entry(
@@ -480,6 +488,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     fh,
                     offset,
                 );
+                reply.ok();
                 return;
             }
         };
@@ -569,6 +578,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     function_name!(),
                     _ino
                 );
+                reply.error(ENOENT);
             }
         }
     }

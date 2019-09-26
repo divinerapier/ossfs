@@ -1,3 +1,5 @@
+use function_name::named;
+
 use fuse::{FileAttr, FileType};
 use std::fmt::Debug;
 use std::ops::Add;
@@ -12,6 +14,7 @@ pub trait Backend {
     fn getattr<P: AsRef<Path> + Debug>(&self, path: P) -> Option<FileAttr>;
     fn readdir<P: AsRef<Path> + Debug>(&self, path: P, offset: usize) -> Option<Vec<Node>>;
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat>;
+    fn mkdir<P: AsRef<Path> + Debug>(&self, path: P, mode: u32);
 }
 
 #[derive(Debug)]
@@ -119,15 +122,19 @@ impl Backend for SimpleBackend {
             flags: 0,
         })
     }
+    #[named]
     fn readdir<P: AsRef<Path> + Debug>(&self, path: P, offset: usize) -> Option<Vec<Node>> {
         let mut result = vec![];
         // Add . / ..
         log::debug!(
-            "line: {:#?}, path: {:#?}, offset: {:#}",
+            "{}:{} {} path: {:?}, offset: {:?}",
+            std::file!(),
             std::line!(),
+            function_name!(),
             path,
             offset
         );
+
         let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
             Ok(dir) => {
                 log::debug!(
@@ -213,8 +220,15 @@ impl Backend for SimpleBackend {
         log::debug!("line: {:#?}, nodes: {:#?}", std::line!(), result);
         Some(result)
     }
-    fn statfs<P: AsRef<Path>>(&self, path: P) -> Option<Stat> {
-        // let metadata: std::fs::Metadata = std::fs::metadata(path).unwrap();
+    #[named]
+    fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat> {
+        log::debug!(
+            "{}:{} {} path: {:#?}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            path
+        );
         match nix::sys::statfs::statfs(path.as_ref()) {
             #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
             Ok(stat) => Some(Stat {
@@ -242,6 +256,19 @@ impl Backend for SimpleBackend {
                 println!("stat failed, error: {}", err);
                 None
             }
+        }
+    }
+    fn mkdir<P: AsRef<Path> + Debug>(&self, path: P, mode: u32) {
+        std::fs::create_dir_all(path.as_ref()).unwrap();
+        #[cfg(any(target_os = "unix", target_os = "macos"))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perm = std::fs::Permissions::from_mode(mode);
+            std::fs::set_permissions(path.as_ref(), perm).unwrap();
+        }
+        #[cfg(any(target_os = "macos"))]
+        {
+            let meta = std::fs::metadata(path.as_ref()).unwrap();
         }
     }
 }

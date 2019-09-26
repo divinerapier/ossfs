@@ -1,3 +1,5 @@
+use function_name::named;
+
 use super::backend::Backend;
 use super::node::Node;
 use super::stat::Stat;
@@ -63,6 +65,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.nodes_tree.index(*index).attr
     }
 
+    #[named]
     pub fn readdir(&mut self, parent_ino: u64, file_handle: u64, offset: i64) -> Option<Vec<Node>> {
         let parent_index = match self.ino_mapper.get(&parent_ino) {
             None => {
@@ -82,9 +85,11 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let children_from_backend: Option<Vec<Node>> = self
             .backend
             .readdir(parent_node.path.as_ref().unwrap(), offset as usize);
-        log::error!(
-            "line: {}, parent: ino: {:#?}, parent_node: {:#?}, children_from_backend: {:#?}",
+        log::debug!(
+            "{}:{} {}, parent_ino: {:?}, parent_node: {:#?}, children_from_backend: {:#?}",
+            std::file!(),
             std::line!(),
+            function_name!(),
             parent_ino,
             parent_node,
             children_from_backend,
@@ -100,6 +105,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         }
 
         if children_from_backend.len() == 0 {
+            log::debug!("line: {}. children from backend is zero.", std::line!());
             // delete all node from tree
             for (child_index, child) in children_in_tree {
                 self.nodes_tree.remove_node_with_children(child_index);
@@ -150,9 +156,11 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                 }
             }
         }
-        log::error!(
-            "line: {:#?}, tree: {:#?}, map:{:#?}",
+        log::debug!(
+            "{}:{} {} tree: {:#?}, map:{:#?}",
+            std::file!(),
             std::line!(),
+            function_name!(),
             self.nodes_tree,
             self.ino_mapper
         );
@@ -191,15 +199,17 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             }
         }
     }
-
+    #[named]
     pub fn mkdir(&mut self, parent: u64, name: &OsStr, mode: u32) -> Option<Node> {
         let parent_index = self.ino_mapper.get(&parent);
         let parent_index = match parent_index {
             Some(parent_index) => *parent_index,
             None => {
                 log::error!(
-                    "line: {:#?}, parent: {}, name: {:#?}, mode: {}, index: {:#?}",
+                    "{}:{} {} parent: {}, name: {:#?}, mode: {:o}, index: {:#?}",
                     std::line!(),
+                    std::file!(),
+                    function_name!(),
                     parent,
                     name,
                     mode,
@@ -220,6 +230,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let parent_node = self.nodes_tree.index(parent_index);
         let parent_path = parent_node.path.as_ref().unwrap();
         let child_path = parent_path.join(name);
+        self.backend.mkdir(&child_path, mode);
         let node = Node::new(
             self.ino_mapper.len() as u64,
             parent,
