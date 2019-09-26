@@ -231,7 +231,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             }
             None => {
                 log::error!(
-                    "line: {}, parent: {}, name: {:#?}, mode: {}",
+                    "line: {}, parent: {}, name: {:?}, mode: {}",
                     std::line!(),
                     parent,
                     name,
@@ -574,7 +574,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                 }
                 for child in children.iter().skip(skip) {
                     log::info!(
-                        "{}:{} {} inode: {:#?}, offset: {:?}, filetype: {:#?}, path: {:?}",
+                        "{}:{} {} inode: {:?}, offset: {:?}, filetype: {:?}, path: {:?}",
                         std::file!(),
                         std::line!(),
                         function_name!(),
@@ -591,7 +591,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     ) {
                         break;
                     }
-                    i += 1;
+                    i = i + 1;
                 }
                 reply.ok();
             }

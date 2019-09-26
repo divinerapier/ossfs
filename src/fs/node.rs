@@ -1,6 +1,5 @@
 use fuse::{FileAttr, FileType};
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Node {

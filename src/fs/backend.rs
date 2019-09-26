@@ -140,7 +140,7 @@ impl Backend for SimpleBackend {
         let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
             Ok(dir) => {
                 log::debug!(
-                    "{}:{} {} path: {:#?}, offset: {:#?}, dir: {:#?}",
+                    "{}:{} {} path: {:?}, offset: {:?}, dir: {:?}",
                     std::file!(),
                     std::line!(),
                     function_name!(),
@@ -167,7 +167,7 @@ impl Backend for SimpleBackend {
             let entry: std::fs::DirEntry = entry.unwrap();
             let meta: std::fs::Metadata = entry.metadata().unwrap();
             log::debug!(
-                "{}:{} {} path: {:#?}, sub path: {:#?}",
+                "{}:{} {} path: {:?}, sub path: {:?}",
                 std::file!(),
                 std::line!(),
                 function_name!(),
@@ -226,7 +226,7 @@ impl Backend for SimpleBackend {
             result.push(node);
         }
         log::debug!(
-            "{}:{} {} nodes: {:#?}",
+            "{}:{} {} nodes: {:?}",
             std::file!(),
             std::line!(),
             function_name!(),
@@ -237,7 +237,7 @@ impl Backend for SimpleBackend {
     #[named]
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat> {
         log::debug!(
-            "{}:{} {} path: {:#?}",
+            "{}:{} {} path: {:?}",
             std::file!(),
             std::line!(),
             function_name!(),
