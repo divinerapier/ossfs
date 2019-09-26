@@ -188,7 +188,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn mknod(
         &mut self,
-        _req: &Request,
+        req: &Request,
         parent: u64,
         name: &OsStr,
         mode: u32,
@@ -213,6 +213,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             FileType::RegularFile,
             (0x8000 | (mode as u16 & 0x0fff)) as u32,
             rdev,
+            req.uid(),
+            req.gid(),
         ) {
             Some(node) => {
                 reply.entry(&std::time::Duration::from_secs(1), &node.attr.unwrap(), 0);
@@ -232,7 +234,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
 
     /// Create a directory.
     #[named]
-    fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, reply: ReplyEntry) {
+    fn mkdir(&mut self, req: &Request, parent: u64, name: &OsStr, mode: u32, reply: ReplyEntry) {
         log::debug!(
             "{}:{} {}, parent: {}, name: {:?}, mode: [{:o}:{:o}]",
             std::file!(),
@@ -249,6 +251,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             FileType::Directory,
             (0x4000 | (mode as u16 & 0x0fff)) as u32,
             0,
+            req.uid(),
+            req.gid(),
         ) {
             Some(node) => {
                 reply.entry(&std::time::Duration::from_secs(1), &node.attr.unwrap(), 0);
@@ -384,7 +388,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             _ino,
             _flags
         );
-        panic!();
+        panic!("ino: {}, flags: {}", _ino, _flags);
         reply.error(ENOSYS)
     }
 

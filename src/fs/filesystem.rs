@@ -209,6 +209,8 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         filetype: FileType,
         mode: u32,
         rdev: u32,
+        uid: u32,
+        gid: u32,
     ) -> Option<Node> {
         let parent_index = self.ino_mapper.get(&parent);
         let parent_index: NodeIndex<u32> = match parent_index {
@@ -274,9 +276,9 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                 /// Number of hard links
                 nlink: 1,
                 /// User id
-                uid: 0,
+                uid,
                 /// Group id
-                gid: 0,
+                gid,
                 /// Rdev
                 rdev: rdev,
                 /// Flags (macOS only, see chflags(2))
