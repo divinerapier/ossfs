@@ -57,7 +57,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         match self.fs.lookup(parent, name) {
-            Some(attr) => {
+            Ok(Some(attr)) => {
                 log::info!(
                     "{}:{} {}  parent: {}, name: {}, attr: {:?}",
                     std::file!(),
@@ -69,14 +69,26 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                 );
                 reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
             }
-            None => {
-                log::error!(
-                    "{}:{} {} parent: {}, name: {}",
+            Ok(None) => {
+                log::warn!(
+                    "{}:{} {}  parent: {}, name: {}",
                     std::file!(),
                     std::line!(),
                     function_name!(),
                     parent,
-                    name.to_string_lossy()
+                    name.to_string_lossy(),
+                );
+                reply.error(ENOENT);
+            }
+            Err(e) => {
+                log::error!(
+                    "{}:{} {} parent: {}, name: {}, error: {}",
+                    std::file!(),
+                    std::line!(),
+                    function_name!(),
+                    parent,
+                    name.to_string_lossy(),
+                    e
                 );
                 reply.error(ENOENT);
             }
@@ -388,8 +400,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             _ino,
             _flags
         );
-        panic!("ino: {}, flags: {}", _ino, _flags);
-        reply.error(ENOSYS)
+        // reply.opened()
+        reply.opened(0, _flags);
     }
 
     /// Read data.
@@ -601,7 +613,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     skip = offset as usize - 1;
                 }
                 for child in children.iter().skip(skip) {
-                    log::error!(
+                    log::debug!(
                         "{}:{} {} inode: {:?}, offset: {:?}, filetype: {:?}, path: {:?}",
                         std::file!(),
                         std::line!(),
@@ -653,7 +665,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             _fh,
             _flags
         );
-        reply.error(ENOSYS)
+        // reply.error(ENOSYS)
+        reply.ok();
     }
 
     /// Synchronize directory contents.

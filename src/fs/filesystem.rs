@@ -41,7 +41,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
     }
 
     #[named]
-    pub fn lookup(&self, ino: u64, name: &OsStr) -> Option<FileAttr> {
+    pub fn lookup(&self, ino: u64, name: &OsStr) -> Result<Option<FileAttr>, String> {
         match self.ino_mapper.get(&ino) {
             Some(parent_index) => {
                 for child_index in self.nodes_tree.children(*parent_index) {
@@ -52,10 +52,10 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                             child.attr.as_ref().unwrap().ino,
                             *child.inode.as_ref().unwrap()
                         );
-                        return child.attr;
+                        return Ok(child.attr);
                     }
                 }
-                log::error!(
+                log::warn!(
                     "{}:{} {} parent: {}, name: {:?} not found",
                     std::file!(),
                     std::line!(),
@@ -63,7 +63,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                     ino,
                     name
                 );
-                None
+                Ok(None)
                 // get from backend
                 // let parent_node: &Node = self.nodes_tree.index(*parent_index);
                 // let child_path: PathBuf = parent_node.path.as_ref().unwrap().join(name);
@@ -78,7 +78,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                     ino,
                     name,
                 );
-                None
+                Err(format!("parent not found"))
             }
         }
     }
