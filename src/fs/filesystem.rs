@@ -77,18 +77,22 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.nodes_tree.index(*index).attr
     }
 
+    pub fn getnode(&self, ino: u64) -> Option<Node> {
+        let index = self.ino_mapper.get(&ino)?;
+        Some(self.nodes_tree.index(*index).clone())
+    }
+
     #[named]
-    pub fn readdir(&mut self, parent_ino: u64, file_handle: u64, offset: i64) -> Option<Vec<Node>> {
+    pub fn readdir(&mut self, parent_ino: u64, file_handle: u64) -> Option<Vec<Node>> {
         let parent_index = match self.ino_mapper.get(&parent_ino) {
             None => {
                 log::error!(
-                    "{}:{}, {} parent_ino: {}, file_handle: {}, offset: {} not in mapper",
+                    "{}:{}, {} parent_ino: {}, file_handle: {} not in mapper",
                     std::file!(),
                     std::line!(),
                     function_name!(),
                     parent_ino,
                     file_handle,
-                    offset
                 );
                 return None;
             }
@@ -96,9 +100,8 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         };
         let parent_node: Node = self.nodes_tree.index(parent_index).clone();
         let children_indexes = self.nodes_tree.children(parent_index);
-        let children_from_backend: Option<Vec<Node>> = self
-            .backend
-            .readdir(parent_node.path.as_ref().unwrap(), offset as usize);
+        let children_from_backend: Option<Vec<Node>> =
+            self.backend.readdir(parent_node.path.as_ref().unwrap(), 0);
         log::debug!(
             "{}:{} {}, parent_ino: {:?}, parent_node: {:#?}, children_from_backend: {:#?}",
             std::file!(),
@@ -193,20 +196,20 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             self.ino_mapper
         );
         // remove nodes not in backend
-        for (index, child_in_tree) in children_in_tree {
-            let mut ok = false;
+        for (_index, child_in_tree) in children_in_tree {
+            // let mut ok = false;
             for child_in_backend in &children_from_backend {
                 if child_in_backend.path == child_in_tree.path {
-                    ok = true;
+                    // ok = true;
                     break;
                 }
             }
-            if !ok {
-                if child_in_tree.offset.unwrap() >= offset as u64 {
-                    self.nodes_tree.remove_node_with_children(index);
-                    self.ino_mapper.remove(&child_in_tree.inode.unwrap());
-                }
-            }
+            // if !ok {
+            //     if child_in_tree.offset.unwrap() >= offset as u64 {
+            //         self.nodes_tree.remove_node_with_children(index);
+            //         self.ino_mapper.remove(&child_in_tree.inode.unwrap());
+            //     }
+            // }
         }
         log::info!(
             "{}:{} {} tree: {:#?}, map:{:#?}, children_from_backend: {:#?}",

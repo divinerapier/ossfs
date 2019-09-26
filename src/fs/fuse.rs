@@ -59,14 +59,15 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         match self.fs.lookup(parent, name) {
             Some(attr) => {
                 log::info!(
-                    "line: {}, func: {},  parent: {}, name: {}, attr: {:?}",
+                    "{}:{} {}  parent: {}, name: {}, attr: {:?}",
+                    std::file!(),
                     std::line!(),
                     function_name!(),
                     parent,
                     name.to_string_lossy(),
                     attr
                 );
-                reply.entry(&std::time::Duration::from_secs(3600), &attr, 0);
+                reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
             }
             None => {
                 log::error!(
@@ -114,10 +115,10 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     ino,
                     attr
                 );
-                reply.attr(&std::time::Duration::from_secs(3600), &attr);
+                reply.attr(&std::time::Duration::from_secs(1), &attr);
             }
             None => {
-                log::info!(
+                log::error!(
                     "{}:{} {} ino: {}, attr not found",
                     std::file!(),
                     std::line!(),
@@ -212,24 +213,24 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, reply: ReplyEntry) {
         log::debug!(
-            "{}:{} {}, parent: {}, name: {:?}, mode: {}",
+            "{}:{} {}, parent: {}, name: {:?}, mode: [{:o}:{:o}]",
             std::file!(),
             std::line!(),
             function_name!(),
             parent,
             name,
-            mode
+            mode,
+            (0x4000 | (mode as u16 & 0x0fff))
         );
-        match self.fs.mkdir(parent, name, mode) {
+        match self
+            .fs
+            .mkdir(parent, name, (0x4000 | (mode as u16 & 0x0fff)) as u32)
+        {
             Some(node) => {
-                reply.entry(
-                    &std::time::Duration::from_secs(3600),
-                    &node.attr.unwrap(),
-                    0,
-                );
+                reply.entry(&std::time::Duration::from_secs(1), &node.attr.unwrap(), 0);
             }
             None => {
-                log::debug!(
+                log::error!(
                     "line: {}, parent: {}, name: {:#?}, mode: {}",
                     std::line!(),
                     parent,
@@ -359,6 +360,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             _ino,
             _flags
         );
+        panic!();
         reply.error(ENOSYS)
     }
 
@@ -537,17 +539,62 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        log::info!(
-            "{}:{} {}, ino: {}, fh: {}, offset: {}",
-            std::file!(),
-            std::line!(),
-            function_name!(),
-            ino,
-            fh,
-            offset,
-        );
-        let children = match self.fs.readdir(ino, fh, offset) {
-            Some(children) => children,
+        match self.fs.readdir(ino, fh) {
+            Some(children) => {
+                log::info!(
+                    "{}:{} {}, ino: {}, fh: {}, offset: {}, children: {:?}",
+                    std::file!(),
+                    std::line!(),
+                    function_name!(),
+                    ino,
+                    fh,
+                    offset,
+                    children
+                );
+                let mut i = 0;
+                let mut skip = 0;
+                if offset == 0 {
+                    let parent_node = self.fs.getnode(ino).unwrap();
+                    reply.add(parent_node.inode.unwrap(), 0, FileType::Directory, ".");
+                    let grantparent_node = if parent_node.inode.unwrap() == 1 {
+                        parent_node
+                    } else {
+                        self.fs.getnode(parent_node.parent.unwrap()).unwrap()
+                    };
+                    reply.add(
+                        grantparent_node.inode.unwrap(),
+                        1,
+                        FileType::Directory,
+                        "..",
+                    );
+                    i = 2;
+                } else {
+                    i = offset + 1;
+                    skip = offset as usize - 1;
+                }
+                for child in children.iter().skip(skip) {
+                    log::info!(
+                        "{}:{} {} inode: {:#?}, offset: {:?}, filetype: {:#?}, path: {:?}",
+                        std::file!(),
+                        std::line!(),
+                        function_name!(),
+                        child.inode.unwrap(),
+                        i,
+                        child.filetype.unwrap(),
+                        child.path.as_ref().unwrap()
+                    );
+                    if reply.add(
+                        child.inode.unwrap(),
+                        i,
+                        child.filetype.unwrap(),
+                        child.path.as_ref().unwrap(),
+                    ) {
+                        break;
+                    }
+                    i += 1;
+                }
+                reply.ok();
+            }
             None => {
                 log::error!(
                     "{}:{} {}, _ino: {}, _fh: {}, _offset: {}",
@@ -559,38 +606,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     offset,
                 );
                 reply.error(ENOENT);
-                return;
             }
-        };
-        log::info!(
-            "{}:{} {}, _ino: {}, _fh: {}, _offset: {}, children: {:?}",
-            std::file!(),
-            std::line!(),
-            function_name!(),
-            ino,
-            fh,
-            offset,
-            children
-        );
-        for child in children {
-            log::info!(
-                "{}:{} {} inode: {:#?}, offset: {:?}, filetype: {:#?}, path: {:?}",
-                std::file!(),
-                std::line!(),
-                function_name!(),
-                child.inode.unwrap(),
-                child.offset.unwrap(),
-                child.filetype.unwrap(),
-                child.path.as_ref().unwrap()
-            );
-            reply.add(
-                child.inode.unwrap(),
-                child.offset.unwrap() as i64,
-                child.filetype.unwrap(),
-                child.path.as_ref().unwrap(),
-            );
         }
-        reply.ok();
     }
 
     /// Release an open directory.
