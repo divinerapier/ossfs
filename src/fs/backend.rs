@@ -1,10 +1,11 @@
 use function_name::named;
-
 use fuse::{FileAttr, FileType};
 use std::fmt::Debug;
 use std::ops::Add;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+use std::time::UNIX_EPOCH;
 
 use crate::fs::node::Node;
 use crate::fs::stat::Stat;
@@ -35,21 +36,21 @@ impl SimpleBackend {
                 /// Size in blocks
                 blocks: meta.blocks(),
                 /// Time of last access
-                atime: std::time::UNIX_EPOCH
+                atime: UNIX_EPOCH
                     .clone()
-                    .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+                    .add(Duration::from_secs(meta.atime() as u64)),
                 /// Time of last modification
-                mtime: std::time::UNIX_EPOCH
+                mtime: UNIX_EPOCH
                     .clone()
-                    .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+                    .add(Duration::from_secs(meta.mtime() as u64)),
                 /// Time of last change
-                ctime: std::time::UNIX_EPOCH
+                ctime: UNIX_EPOCH
                     .clone()
-                    .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+                    .add(Duration::from_secs(meta.ctime() as u64)),
                 /// Time of creation (macOS only)
-                crtime: std::time::UNIX_EPOCH
+                crtime: UNIX_EPOCH
                     .clone()
-                    .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+                    .add(Duration::from_secs(meta.atime_nsec() as u64)),
                 /// Kind of file (directory, file, pipe, etc)
                 kind: FileType::Directory,
                 /// Permissions
@@ -122,6 +123,7 @@ impl Backend for SimpleBackend {
             flags: 0,
         })
     }
+
     #[named]
     fn readdir<P: AsRef<Path> + Debug>(&self, path: P, offset: usize) -> Option<Vec<Node>> {
         let mut result = vec![];
@@ -138,8 +140,10 @@ impl Backend for SimpleBackend {
         let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
             Ok(dir) => {
                 log::debug!(
-                    "line: {:#?}, path: {:#?}, offset: {:#?}, dir: {:#?}",
+                    "{}:{} {} path: {:#?}, offset: {:#?}, dir: {:#?}",
+                    std::file!(),
                     std::line!(),
+                    function_name!(),
                     path,
                     offset,
                     dir
@@ -147,9 +151,11 @@ impl Backend for SimpleBackend {
                 dir
             }
             Err(e) => {
-                println!(
-                    "line: {:#?}, path: {:?}, offset: {}, error: {}",
+                log::error!(
+                    "{}:{} {} path: {:?}, offset: {}, error: {}",
+                    std::file!(),
                     std::line!(),
+                    function_name!(),
                     path,
                     offset,
                     e
@@ -161,8 +167,10 @@ impl Backend for SimpleBackend {
             let entry: std::fs::DirEntry = entry.unwrap();
             let meta: std::fs::Metadata = entry.metadata().unwrap();
             log::debug!(
-                "line: {:#?}, path: {:#?}, sub path: {:#?}",
+                "{}:{} {} path: {:#?}, sub path: {:#?}",
+                std::file!(),
                 std::line!(),
+                function_name!(),
                 path,
                 entry.path()
             );
@@ -217,7 +225,13 @@ impl Backend for SimpleBackend {
             };
             result.push(node);
         }
-        log::debug!("line: {:#?}, nodes: {:#?}", std::line!(), result);
+        log::debug!(
+            "{}:{} {} nodes: {:#?}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            result
+        );
         Some(result)
     }
     #[named]

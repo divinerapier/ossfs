@@ -22,8 +22,9 @@ where
     B: Backend + std::fmt::Debug,
 {
     fs: FileSystem<B>,
-    path_cache: std::collections::HashMap<String, usize>,
+    path_cache: HashMap<String, usize>,
     next_handle: AtomicU64,
+    handle_reference: HashMap<u64, u64>,
 }
 
 impl<B: Backend + std::fmt::Debug> Fuse<B> {
@@ -33,6 +34,7 @@ impl<B: Backend + std::fmt::Debug> Fuse<B> {
             // inode_cache: HashMap::new(),
             path_cache: HashMap::new(),
             next_handle: AtomicU64::new(2),
+            handle_reference: HashMap::new(),
         }
     }
 }
@@ -68,7 +70,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             }
             None => {
                 log::error!(
-                    "line: {}, func: {},  parent: {}, name: {}",
+                    "{}:{} {} parent: {}, name: {}",
+                    std::file!(),
                     std::line!(),
                     function_name!(),
                     parent,
@@ -89,7 +92,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn forget(&mut self, _req: &Request, _ino: u64, _nlookup: u64) {
         log::info!(
-            "line: {}, func: {},  ino: {}, nlookup: {}",
+            "{}:{} {} ino: {}, nlookup: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -103,7 +107,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         match self.fs.getattr(ino) {
             Some(attr) => {
                 log::info!(
-                    "line: {}, func: {}, ino: {}, attr: {:?}",
+                    "{}:{} {} ino: {}, attr: {:?}",
+                    std::file!(),
                     std::line!(),
                     function_name!(),
                     ino,
@@ -113,7 +118,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             }
             None => {
                 log::info!(
-                    "line: {}, func: {}, ino: {}, attr not found",
+                    "{}:{} {} ino: {}, attr not found",
+                    std::file!(),
                     std::line!(),
                     function_name!(),
                     ino,
@@ -143,7 +149,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyAttr,
     ) {
         log::debug!(
-            "line: {}, func: {}, inode: {:?}, mode: {:?}, uid: {:?}, gid: {:?}, size: {:?}, atime: {:?}, mtime: {:?}, fh: {:?}, crtime: {:?}, bkuptime: {:?}, flag: {:?}",
+            "{}:{} {} inode: {:?}, mode: {:?}, uid: {:?}, gid: {:?}, size: {:?}, atime: {:?}, mtime: {:?}, fh: {:?}, crtime: {:?}, bkuptime: {:?}, flag: {:?}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -166,7 +173,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn readlink(&mut self, _req: &Request, _ino: u64, reply: ReplyData) {
         log::debug!(
-            "line: {}, func: {}, ino: {}",
+            "{}:{} {}, ino: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino
@@ -187,7 +195,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyEntry,
     ) {
         log::warn!(
-            "line: {}, func: {}, parent: {}, name: {}, mode: {}, rdev: {}",
+            "{}:{} {}, parent: {}, name: {}, mode: {}, rdev: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _parent,
@@ -203,7 +212,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn mkdir(&mut self, _req: &Request, parent: u64, name: &OsStr, mode: u32, reply: ReplyEntry) {
         log::debug!(
-            "line: {}, func: {}, parent: {}, name: {:?}, mode: {}",
+            "{}:{} {}, parent: {}, name: {:?}, mode: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             parent,
@@ -232,15 +242,31 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     }
 
     /// Remove a file.
+    #[named]
     fn unlink(&mut self, _req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}, func: {}", std::line!());
+        log::debug!(
+            "{}:{} {} parent: {}, name: {:?}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _parent,
+            _name
+        );
 
         reply.error(ENOSYS);
     }
 
     /// Remove a directory.
+    #[named]
     fn rmdir(&mut self, _req: &Request, _parent: u64, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}, func: {}", std::line!());
+        log::debug!(
+            "{}:{} {} parent: {}, name: {:?}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _parent,
+            _name
+        );
 
         reply.error(ENOSYS);
     }
@@ -256,12 +282,13 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyEntry,
     ) {
         log::debug!(
-            "line: {}, func: {}, parent: {}, name: {:?}, link: {:?}",
+            "{}:{} {} parent: {}, name: {:?}, link: {:?}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _parent,
             _name,
-            _link
+            _link,
         );
 
         reply.error(ENOSYS);
@@ -279,7 +306,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyEmpty,
     ) {
         log::debug!(
-            "line: {}, func: {}, parent: {}, name: {:?}, newparent: {}, newname: {:?}",
+            "{}:{} {} parent: {}, name: {:?}, newparent: {}, newname: {:?}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _parent,
@@ -302,7 +330,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyEntry,
     ) {
         log::debug!(
-            "line: {}, func: {}, ino: {}, newparent: {}, newname: {:?}",
+            "{}:{} {}, ino: {}, newparent: {}, newname: {:?}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -323,14 +352,14 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn open(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
         log::debug!(
-            "line: {}, func: {}, ino: {}, flags: {}",
+            "{}:{} {}, ino: {}, flags: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
             _flags
         );
-
-        reply.opened(0, 0);
+        reply.error(ENOSYS)
     }
 
     /// Read data.
@@ -350,8 +379,16 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _size: u32,
         reply: ReplyData,
     ) {
-        // log::debug!("line: {}, func: {}", std::line!());
-
+        log::debug!(
+            "{}:{} {}, ino: {}, fh: {}, offset: {}, size: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino,
+            _fh,
+            _offset,
+            _size,
+        );
         reply.error(ENOSYS);
     }
 
@@ -372,7 +409,17 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _flags: u32,
         reply: ReplyWrite,
     ) {
-        // log::debug!("line: {}, func: {}", std::line!());
+        log::debug!(
+            "{}:{} {}, ino: {}, fh: {}, offset: {}, data: {:?}, flags: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino,
+            _fh,
+            _offset,
+            _data,
+            _flags,
+        );
 
         reply.error(ENOSYS);
     }
@@ -389,8 +436,15 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// operations (setlk, getlk) it should remove all locks belonging to 'lock_owner'.
     #[named]
     fn flush(&mut self, _req: &Request, _ino: u64, _fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
-        // log::debug!("line: {}, func: {}", std::line!());
-
+        log::debug!(
+            "{}:{} {}, ino: {}, fh: {}, lock_owner: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino,
+            _fh,
+            _lock_owner,
+        );
         reply.error(ENOSYS);
     }
 
@@ -413,9 +467,18 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _flush: bool,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}, func: {}", std::line!());
-
-        reply.ok();
+        log::debug!(
+            "{}:{} {}, ino: {}, fh: {}, flags: {}, lock_owner: {}, flush: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino,
+            _fh,
+            _flags,
+            _lock_owner,
+            _flush,
+        );
+        reply.error(ENOSYS)
     }
 
     /// Synchronize file contents.
@@ -423,8 +486,15 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// not the meta data.
     #[named]
     fn fsync(&mut self, _req: &Request, _ino: u64, _fh: u64, _datasync: bool, reply: ReplyEmpty) {
-        // log::debug!("line: {}, func: {}", std::line!());
-
+        log::debug!(
+            "{}:{} {}, ino: {}, fh: {}, datasync: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino,
+            _fh,
+            _datasync,
+        );
         reply.error(ENOSYS);
     }
 
@@ -435,26 +505,24 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// anything in fh, though that makes it impossible to implement standard conforming
     /// directory stream operations in case the contents of the directory can change
     /// between opendir and releasedir.
-    // #[named]
-    // fn opendir(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
-    //     log::info!(
-    //         "line: {}, func: {} _ino: {}, _flags: {}",
-    //         std::line!(),
-    //         function_name!(),
-    //         _ino,
-    //         _flags
-    //     );
+    #[named]
+    fn opendir(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
+        log::info!(
+            "{}:{} {} ino: {}, flags: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino,
+            _flags
+        );
 
-    //     if _ino == 0 {
-    //         panic!("open dir ino: 0");
-    //     }
-
-    //     if _ino == 1 {
-    //         reply.opened(1, 0);
-    //     } else {
-    //         reply.opened(0, 0);
-    //     }
-    // }
+        if _ino == 0 {
+            panic!("open dir ino: 0");
+        }
+        let previous = self.next_handle.fetch_add(1, Ordering::SeqCst);
+        *self.handle_reference.entry(_ino).or_insert(_ino) += 1;
+        reply.opened(previous, 0o777);
+    }
     /// Read directory.
     /// Send a buffer filled using buffer.fill(), with size not exceeding the
     /// requested size. Send an empty buffer on end of stream. fh will contain the
@@ -470,7 +538,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         mut reply: ReplyDirectory,
     ) {
         log::info!(
-            "line: {}, func: {}, _ino: {}, _fh: {}, _offset: {}",
+            "{}:{} {}, ino: {}, fh: {}, offset: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             ino,
@@ -480,20 +549,22 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         let children = match self.fs.readdir(ino, fh, offset) {
             Some(children) => children,
             None => {
-                log::info!(
-                    "line: {}, func: {}, _ino: {}, _fh: {}, _offset: {}",
+                log::error!(
+                    "{}:{} {}, _ino: {}, _fh: {}, _offset: {}",
+                    std::file!(),
                     std::line!(),
                     function_name!(),
                     ino,
                     fh,
                     offset,
                 );
-                reply.ok();
+                reply.error(ENOENT);
                 return;
             }
         };
         log::info!(
-            "line: {}, func: {}, _ino: {}, _fh: {}, _offset: {}, children: {:?}",
+            "{}:{} {}, _ino: {}, _fh: {}, _offset: {}, children: {:?}",
+            std::file!(),
             std::line!(),
             function_name!(),
             ino,
@@ -503,8 +574,10 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         );
         for child in children {
             log::info!(
-                "line: {:#?}, inode: {:#?}, offset: {:?}, filetype: {:#?}, path: {:?}",
+                "{}:{} {} inode: {:#?}, offset: {:?}, filetype: {:#?}, path: {:?}",
+                std::file!(),
                 std::line!(),
+                function_name!(),
                 child.inode.unwrap(),
                 child.offset.unwrap(),
                 child.filetype.unwrap(),
@@ -526,8 +599,16 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// opendir method didn't set any value.
     #[named]
     fn releasedir(&mut self, _req: &Request, _ino: u64, _fh: u64, _flags: u32, reply: ReplyEmpty) {
-        // log::debug!("line: {}, func: {}", std::line!());
-        reply.ok();
+        log::debug!(
+            "{}:{} {} ino: {}, fh: {}, flags: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino,
+            _fh,
+            _flags
+        );
+        reply.error(ENOSYS)
     }
 
     /// Synchronize directory contents.
@@ -543,7 +624,15 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _datasync: bool,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}, func: {}", std::line!());
+        log::debug!(
+            "{}:{} {} ino: {}, fh: {}, datasync: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino,
+            _fh,
+            _datasync
+        );
 
         reply.error(ENOSYS);
     }
@@ -554,7 +643,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         match self.fs.statfs(_ino) {
             Some(stat) => {
                 log::info!(
-                    "line: {}, func: {}, ino: {}, stat: {:?}",
+                    "{}:{} {}, ino: {}, stat: {:?}",
+                    std::file!(),
                     std::line!(),
                     function_name!(),
                     _ino,
@@ -573,7 +663,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             }
             None => {
                 log::info!(
-                    "line: {}, func: {}, ino: {}",
+                    "{}:{} {}, ino: {}",
+                    std::file!(),
                     std::line!(),
                     function_name!(),
                     _ino
@@ -596,7 +687,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyEmpty,
     ) {
         log::debug!(
-            "line: {}, func: {}, ino: {}, name: {:?}, value: {:?} flags: {}, position: {}",
+            "{}:{} {}, ino: {}, name: {:?}, value: {:?} flags: {}, position: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -623,7 +715,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyXattr,
     ) {
         log::debug!(
-            "line: {}, func: {}, ino: {}, name: {:?}, size: {}",
+            "{}:{} {}, ino: {}, name: {:?}, size: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -641,7 +734,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn listxattr(&mut self, _req: &Request, _ino: u64, _size: u32, reply: ReplyXattr) {
         log::debug!(
-            "line: {}, func: {}, ino: {}, size: {}",
+            "{}:{} {}, ino: {}, size: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -655,7 +749,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn removexattr(&mut self, _req: &Request, _ino: u64, _name: &OsStr, reply: ReplyEmpty) {
         log::debug!(
-            "line: {}, func: {}, ino: {}, name: {:?}",
+            "{}:{} {}, ino: {}, name: {:?}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -672,7 +767,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn access(&mut self, _req: &Request, _ino: u64, _mask: u32, reply: ReplyEmpty) {
         log::debug!(
-            "line: {}, func: {}, ino: {}, mask: {}",
+            "{}:{} {}, ino: {}, mask: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -703,7 +799,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyCreate,
     ) {
         log::debug!(
-            "line: {}, func: {}, parent: {}, name: {:?}, mode: {}, flags: {}",
+            "{}:{} {}, parent: {}, name: {:?}, mode: {}, flags: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _parent,
@@ -729,7 +826,19 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _pid: u32,
         reply: ReplyLock,
     ) {
-        // log::debug!("line: {}, func: {}", std::line!());
+        log::debug!(
+            "{}:{} {} ino: {}, fh: {}, lock_owner: {}, start: {}, end: {}, typ: {}, pid: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino,
+            _fh,
+            _lock_owner,
+            _start,
+            _end,
+            _typ,
+            _pid
+        );
 
         reply.error(ENOSYS);
     }
@@ -756,7 +865,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyEmpty,
     ) {
         log::debug!(
-            "line: {}, func: {}, ino: {}, fh: {}, lock_owner: {}, start: {}, end: {}, type: {}, pid: {}, sleep: {}",
+            "{}:{} {} ino: {}, fh: {}, lock_owner: {}, start: {}, end: {}, typ: {}, pid: {}, sleep: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -778,7 +888,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     #[named]
     fn bmap(&mut self, _req: &Request, _ino: u64, _blocksize: u32, _idx: u64, reply: ReplyBmap) {
         log::debug!(
-            "line: {}, func: {}, ino: {}, blocksize: {}, idx: {}",
+            "{}:{} {}, ino: {}, blocksize: {}, idx: {}",
+            std::file!(),
             std::line!(),
             function_name!(),
             _ino,
@@ -791,14 +902,22 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
 
     /// macOS only: Rename the volume. Set fuse_init_out.flags during init to
     /// FUSE_VOL_RENAME to enable
+    #[named]
     #[cfg(target_os = "macos")]
     fn setvolname(&mut self, _req: &Request, _name: &OsStr, reply: ReplyEmpty) {
-        // log::debug!("line: {}, func: {}", std::line!());
+        log::debug!(
+            "{}:{} {} name: {:?}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _name
+        );
 
         reply.error(ENOSYS);
     }
 
     /// macOS only (undocumented)
+    #[named]
     #[cfg(target_os = "macos")]
     fn exchange(
         &mut self,
@@ -810,16 +929,33 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         _options: u64,
         reply: ReplyEmpty,
     ) {
-        // log::debug!("line: {}, func: {}", std::line!());
+        log::debug!(
+            "{}:{} {} parent: {}, name: {:?}, newparent: {}, newname: {:?}, option: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _parent,
+            _name,
+            _newparent,
+            _newname,
+            _options
+        );
 
         reply.error(ENOSYS);
     }
 
     /// macOS only: Query extended times (bkuptime and crtime). Set fuse_init_out.flags
     /// during init to FUSE_XTIMES to enable
+    #[named]
     #[cfg(target_os = "macos")]
     fn getxtimes(&mut self, _req: &Request, _ino: u64, reply: ReplyXTimes) {
-        // log::debug!("line: {}, func: {}", std::line!());
+        log::debug!(
+            "{}:{} {} ino: {}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            _ino
+        );
 
         reply.error(ENOSYS);
     }

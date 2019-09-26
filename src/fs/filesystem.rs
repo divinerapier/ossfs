@@ -1,17 +1,18 @@
-use function_name::named;
-
-use super::backend::Backend;
-use super::node::Node;
-use super::stat::Stat;
-use fuse::{FileAttr, FileType};
-use rose_tree::petgraph::graph::DefaultIx;
-use rose_tree::petgraph::graph::NodeIndex;
-use rose_tree::RoseTree;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ops::Index;
 use std::ops::IndexMut;
 use std::path::PathBuf;
+
+use super::backend::Backend;
+use super::node::Node;
+use super::stat::Stat;
+
+use function_name::named;
+use fuse::{FileAttr, FileType};
+use rose_tree::petgraph::graph::DefaultIx;
+use rose_tree::petgraph::graph::NodeIndex;
+use rose_tree::RoseTree;
 
 // 用来保存所有的 Inode 信息, 同时可以从后端(backend)拉取数据或原信息
 #[derive(Debug)]
@@ -37,6 +38,11 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         }
     }
 
+    pub fn next_inode(&self) -> u64 {
+        self.ino_mapper.len() as u64 + 1
+    }
+
+    #[named]
     pub fn lookup(&self, ino: u64, name: &OsStr) -> Option<FileAttr> {
         match self.ino_mapper.get(&ino) {
             Some(parent_index) => {
@@ -54,7 +60,13 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                 self.backend.getattr(child_path)
             }
             None => {
-                println!("parent ino: {} not found", ino);
+                log::error!(
+                    "{}:{} {} parent ino: {} not found",
+                    std::file!(),
+                    std::line!(),
+                    function_name!(),
+                    ino
+                );
                 None
             }
         }
@@ -70,8 +82,10 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let parent_index = match self.ino_mapper.get(&parent_ino) {
             None => {
                 log::error!(
-                    "line: {}, parent_ino: {}, file_handle: {}, offset: {}",
+                    "{}:{}, {} parent_ino: {}, file_handle: {}, offset: {} not in mapper",
+                    std::file!(),
                     std::line!(),
+                    function_name!(),
                     parent_ino,
                     file_handle,
                     offset
@@ -104,17 +118,40 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             children_in_tree.push((child_index, child));
         }
 
+        log::debug!(
+            "{}:{} {} parent: {}, tree: {:#?}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            parent_ino,
+            children_in_tree
+        );
+        log::debug!(
+            "{}:{} {} parent: {}, path: {:#?}, backend: {:#?}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            parent_ino,
+            parent_node.path.as_ref().unwrap(),
+            children_from_backend
+        );
+
         if children_from_backend.len() == 0 {
-            log::debug!("line: {}. children from backend is zero.", std::line!());
+            log::debug!(
+                "{}:{} {}. children from backend is zero.",
+                std::file!(),
+                std::line!(),
+                function_name!()
+            );
             // delete all node from tree
             for (child_index, child) in children_in_tree {
                 self.nodes_tree.remove_node_with_children(child_index);
                 self.ino_mapper.remove(&child.inode.unwrap());
             }
-            return None;
+            return Some(Vec::new());
         }
 
-        // add or update nodes from backend
+        // insert or update nodes from backend to inode_tree
         for child_in_backend in &mut children_from_backend {
             let mut updated = false;
             for (index, child_in_tree) in &children_in_tree {
@@ -130,7 +167,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             }
             if !updated {
                 // add
-                let inode = self.ino_mapper.len() as u64;
+                let inode = self.next_inode();
                 child_in_backend.inode = Some(inode);
                 child_in_backend.parent = parent_node.inode;
                 let child_index = self
@@ -138,8 +175,23 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                     .add_child(parent_index, child_in_backend.clone());
                 self.ino_mapper.insert(inode, child_index);
             }
+            log::debug!(
+                "{}:{} {}  updated: {}, child_in_backend: {:#?}, mapper: {:#?}",
+                std::file!(),
+                std::line!(),
+                function_name!(),
+                updated,
+                child_in_backend,
+                self.ino_mapper,
+            );
         }
-
+        log::debug!(
+            "{}:{} {} map: {:#?}",
+            std::file!(),
+            std::line!(),
+            function_name!(),
+            self.ino_mapper
+        );
         // remove nodes not in backend
         for (index, child_in_tree) in children_in_tree {
             let mut ok = false;
@@ -156,21 +208,29 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                 }
             }
         }
-        log::debug!(
-            "{}:{} {} tree: {:#?}, map:{:#?}",
+        log::info!(
+            "{}:{} {} tree: {:#?}, map:{:#?}, children_from_backend: {:#?}",
             std::file!(),
             std::line!(),
             function_name!(),
             self.nodes_tree,
-            self.ino_mapper
+            self.ino_mapper,
+            children_from_backend
         );
         Some(children_from_backend)
     }
 
+    #[named]
     pub fn statfs(&self, ino: u64) -> Option<Stat> {
         match self.ino_mapper.get(&ino) {
             None => {
-                println!("ino: {} not found", ino);
+                println!(
+                    "{}:{} {} ino: {} not found",
+                    std::file!(),
+                    std::line!(),
+                    function_name!(),
+                    ino
+                );
                 return None;
             }
             Some(node_index) => {
@@ -223,7 +283,14 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         while let Some(child_node_index) = walker.next(&self.nodes_tree) {
             let child_node: &Node = self.nodes_tree.index(child_node_index);
             if child_node.path.as_ref().unwrap().file_name().unwrap() == name {
-                log::warn!("parent: {}, name: {:#?} exists", parent, name);
+                log::warn!(
+                    "{}:{} {} parent: {}, name: {:#?} exists",
+                    std::file!(),
+                    std::line!(),
+                    function_name!(),
+                    parent,
+                    name
+                );
                 return None;
             }
         }

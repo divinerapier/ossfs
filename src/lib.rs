@@ -1,6 +1,3 @@
-// #[macro_use]
-// extern crate function_name;
-
 pub mod fs;
 
 #[cfg(test)]
