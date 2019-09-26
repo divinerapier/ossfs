@@ -75,7 +75,6 @@ impl Backend for SimpleBackend {
         Node {
             inode: Some(1),
             parent: Some(1),
-            offset: Some(0),
             size: Some(self.root_attr.size),
             path: Some(Path::new(self.root).to_path_buf()),
             filetype: Some(FileType::Directory),
@@ -177,7 +176,7 @@ impl Backend for SimpleBackend {
             let node: Node = Node {
                 inode: None,
                 parent: None,
-                offset: Some(index as u64),
+                // offset: Some(index as u64),
                 size: Some(meta.size()),
                 path: Some(PathBuf::from(entry.path())),
                 filetype: if meta.is_dir() {
@@ -225,13 +224,7 @@ impl Backend for SimpleBackend {
             };
             result.push(node);
         }
-        log::debug!(
-            "{}:{} {} nodes: {:?}",
-            std::file!(),
-            std::line!(),
-            function_name!(),
-            result
-        );
+
         Some(result)
     }
     #[named]

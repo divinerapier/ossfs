@@ -189,24 +189,45 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     fn mknod(
         &mut self,
         _req: &Request,
-        _parent: u64,
-        _name: &OsStr,
-        _mode: u32,
-        _rdev: u32,
+        parent: u64,
+        name: &OsStr,
+        mode: u32,
+        rdev: u32,
         reply: ReplyEntry,
     ) {
         log::warn!(
-            "{}:{} {}, parent: {}, name: {}, mode: {}, rdev: {}",
+            "{}:{} {}, parent: {}, name: {}, mode: [{}:{}], rdev: {}",
             std::file!(),
             std::line!(),
             function_name!(),
-            _parent,
-            _name.to_string_lossy(),
-            _mode,
-            _rdev,
+            parent,
+            name.to_string_lossy(),
+            mode,
+            (0x8000 | (mode as u16 & 0x0fff)) as u32,
+            rdev,
         );
 
-        reply.error(ENOSYS);
+        match self.fs.mknod(
+            parent,
+            name,
+            FileType::RegularFile,
+            (0x8000 | (mode as u16 & 0x0fff)) as u32,
+            rdev,
+        ) {
+            Some(node) => {
+                reply.entry(&std::time::Duration::from_secs(1), &node.attr.unwrap(), 0);
+            }
+            None => {
+                log::error!(
+                    "line: {}, parent: {}, name: {:?}, mode: {}",
+                    std::line!(),
+                    parent,
+                    name,
+                    mode
+                );
+                reply.error(ENOSYS);
+            }
+        }
     }
 
     /// Create a directory.
@@ -220,12 +241,15 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             parent,
             name,
             mode,
-            (0x4000 | (mode as u16 & 0x0fff))
+            (0x4000 | (mode as u16 & 0x0fff)) as u32
         );
-        match self
-            .fs
-            .mkdir(parent, name, (0x4000 | (mode as u16 & 0x0fff)) as u32)
-        {
+        match self.fs.mknod(
+            parent,
+            name,
+            FileType::Directory,
+            (0x4000 | (mode as u16 & 0x0fff)) as u32,
+            0,
+        ) {
             Some(node) => {
                 reply.entry(&std::time::Duration::from_secs(1), &node.attr.unwrap(), 0);
             }
@@ -573,7 +597,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     skip = offset as usize - 1;
                 }
                 for child in children.iter().skip(skip) {
-                    log::info!(
+                    log::error!(
                         "{}:{} {} inode: {:?}, offset: {:?}, filetype: {:?}, path: {:?}",
                         std::file!(),
                         std::line!(),

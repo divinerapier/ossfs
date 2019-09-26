@@ -8,7 +8,6 @@ pub struct Node {
     // inode id of parent, parent of root is also root
     pub parent: Option<u64>,
     // block offset
-    pub offset: Option<u64>,
     // size of current node
     pub size: Option<u64>,
     pub path: Option<PathBuf>,
@@ -20,7 +19,6 @@ impl Node {
     pub fn new(
         inode: u64,
         parent: u64,
-        offset: u64,
         size: u64,
         path: PathBuf,
         filetype: FileType,
@@ -29,7 +27,6 @@ impl Node {
         Node {
             inode: Some(inode),
             parent: Some(parent),
-            offset: Some(offset),
             size: Some(size),
             path: Some(path),
             filetype: Some(filetype),
@@ -43,7 +40,6 @@ impl Default for Node {
         Node {
             inode: None,
             parent: None,
-            offset: None,
             size: None,
             path: None,
             filetype: None,

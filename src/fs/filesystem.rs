@@ -11,6 +11,7 @@ use std::ffi::OsStr;
 use std::ops::Index;
 use std::ops::IndexMut;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 #[derive(Debug)]
 pub struct FileSystem<B>
@@ -112,15 +113,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let children_indexes = self.nodes_tree.children(parent_index);
         let children_from_backend: Option<Vec<Node>> =
             self.backend.readdir(parent_node.path.as_ref().unwrap(), 0);
-        log::debug!(
-            "{}:{} {}, parent_ino: {:?}, parent_node: {:?}, children_from_backend: {:?}",
-            std::file!(),
-            std::line!(),
-            function_name!(),
-            parent_ino,
-            parent_node,
-            children_from_backend,
-        );
+
         let mut children_from_backend = match children_from_backend {
             Some(children_from_backend) => children_from_backend,
             None => vec![],
@@ -130,16 +123,6 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             let child: Node = self.nodes_tree.index(child_index).clone();
             children_in_tree.push((child_index, child));
         }
-
-        log::debug!(
-            "{}:{} {} parent: {}, path: {:?}, backend: {:?}",
-            std::file!(),
-            std::line!(),
-            function_name!(),
-            parent_ino,
-            parent_node.path.as_ref().unwrap(),
-            children_from_backend
-        );
 
         if children_from_backend.len() == 0 {
             log::debug!(
@@ -183,23 +166,8 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                     .add_child(parent_index, child_in_backend.clone());
                 self.ino_mapper.insert(inode, child_index);
             }
-            log::debug!(
-                "{}:{} {}  updated: {}, child_in_backend: {:?}, mapper: {:?}",
-                std::file!(),
-                std::line!(),
-                function_name!(),
-                updated,
-                child_in_backend,
-                self.ino_mapper,
-            );
         }
-        log::debug!(
-            "{}:{} {} map: {:?}",
-            std::file!(),
-            std::line!(),
-            function_name!(),
-            self.ino_mapper
-        );
+
         // remove nodes not in backend
         for (_index, child_in_tree) in children_in_tree {
             for child_in_backend in &children_from_backend {
@@ -208,15 +176,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                 }
             }
         }
-        log::info!(
-            "{}:{} {} tree: {:?}, map:{:?}, children_from_backend: {:?}",
-            std::file!(),
-            std::line!(),
-            function_name!(),
-            self.nodes_tree,
-            self.ino_mapper,
-            children_from_backend
-        );
+
         Some(children_from_backend)
     }
 
@@ -242,9 +202,16 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
     }
 
     #[named]
-    pub fn mkdir(&mut self, parent: u64, name: &OsStr, mode: u32) -> Option<Node> {
+    pub fn mknod(
+        &mut self,
+        parent: u64,
+        name: &OsStr,
+        filetype: FileType,
+        mode: u32,
+        rdev: u32,
+    ) -> Option<Node> {
         let parent_index = self.ino_mapper.get(&parent);
-        let parent_index = match parent_index {
+        let parent_index: NodeIndex<u32> = match parent_index {
             Some(parent_index) => *parent_index,
             None => {
                 log::error!(
@@ -280,38 +247,38 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let parent_path = parent_node.path.as_ref().unwrap();
         let child_path = parent_path.join(name);
         self.backend.mkdir(&child_path, mode);
+        let next_inode = self.next_inode();
         let node = Node::new(
-            self.ino_mapper.len() as u64,
+            next_inode,
             parent,
-            self.ino_mapper.len() as u64,
-            0,
+            4096,
             child_path,
-            FileType::Directory,
+            filetype,
             FileAttr {
-                ino: self.ino_mapper.len() as u64,
-                size: 0,
+                ino: next_inode,
+                size: 4096,
                 /// Size in blocks
                 blocks: 1,
                 /// Time of last access
-                atime: std::time::SystemTime::now(),
+                atime: SystemTime::now(),
                 /// Time of last modification
-                mtime: std::time::SystemTime::now(),
+                mtime: SystemTime::now(),
                 /// Time of last change
-                ctime: std::time::SystemTime::now(),
+                ctime: SystemTime::now(),
                 /// Time of creation (macOS only)
-                crtime: std::time::SystemTime::now(),
+                crtime: SystemTime::now(),
                 /// Kind of file (directory, file, pipe, etc)
-                kind: FileType::Directory,
+                kind: filetype,
                 /// Permissions
                 perm: mode as u16,
                 /// Number of hard links
-                nlink: 0,
+                nlink: 1,
                 /// User id
                 uid: 0,
                 /// Group id
                 gid: 0,
                 /// Rdev
-                rdev: 0,
+                rdev: rdev,
                 /// Flags (macOS only, see chflags(2))
                 flags: 0,
             },
