@@ -11,6 +11,10 @@ use std::ffi::OsStr;
 use std::ops::Index;
 use std::time::SystemTime;
 
+pub type Inode = u64;
+
+pub const ROOT_INODE: Inode = 1;
+
 #[derive(Debug)]
 pub struct FileSystem<B>
 where
@@ -83,8 +87,21 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
     }
 
     pub fn getnode(&self, ino: u64) -> Option<Node> {
+        if ino == ROOT_INODE {
+            return Some(self.backend.root());
+        }
         let index = self.ino_mapper.get(&ino)?;
         Some(self.nodes_tree.index(*index).clone())
+    }
+
+    pub fn getparentnode(&self, ino: u64) -> Option<Node> {
+        let node = self.getnode(ino)?;
+        self.getnode(node.parent.unwrap())
+    }
+
+    pub fn getgrandparentnode(&self, ino: u64) -> Option<Node> {
+        let parent_node = self.getparentnode(ino)?;
+        self.getparentnode(parent_node.parent.unwrap())
     }
 
     pub fn add_node_locally(&mut self, parent_index: NodeIndex<u32>, child_node: Node) {
@@ -93,15 +110,19 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
     }
 
     pub fn fetch_children(&mut self, index: NodeIndex<u32>) -> Result<(), String> {
-        self.nodes_tree
-            .index(index)
+        let parent_node: &Node = self.nodes_tree.index(index);
+
+        parent_node
             .path
             .as_ref()
             .map(|path| self.backend.get_children(path))
             .ok_or(format!("get children from backend. {:?}", index))?
             .map(|children| {
                 let children: Vec<Node> = children;
-                for child in children {
+                for mut child in children {
+                    let inode = self.next_inode();
+                    child.inode = Some(inode);
+                    child.attr.as_mut().unwrap().ino = inode;
                     self.add_node_locally(index, child);
                 }
                 ()
@@ -109,12 +130,19 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
     }
 
     pub fn readdir_local(&self, index: NodeIndex<u32>) -> Option<Vec<Node>> {
-        Some(
-            self.nodes_tree
-                .children(index)
-                .map(|node_index| self.nodes_tree.index(node_index).clone())
-                .collect(),
-        )
+        let children: Vec<Node> = self
+            .nodes_tree
+            .children(index)
+            .map(|node_index| {
+                log::info!("parent: {:?}, child: {:?}", index, node_index);
+                self.nodes_tree.index(node_index).clone()
+            })
+            .collect();
+        if children.len() == 0 {
+            None
+        } else {
+            Some(children)
+        }
     }
 
     #[named]
@@ -137,7 +165,10 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                 parent_index,
                 e
             );
+            return None;
         }
+        log::info!("tree: {:#?}", self.nodes_tree);
+        log::info!("mapper: {:#?}", self.ino_mapper);
         self.readdir_local(parent_index)
     }
 

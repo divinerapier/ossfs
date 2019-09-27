@@ -4,6 +4,7 @@ use function_name::named;
 
 use super::backend::Backend;
 use super::filesystem::FileSystem;
+use super::node::Node;
 use libc::{c_int, ENOENT, ENOSYS};
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -203,7 +204,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         reply: ReplyEntry,
     ) {
         log::warn!(
-            "{}:{} {}, parent: {}, name: {}, mode: [{}:{}], rdev: {}",
+            "{}:{} {}, parent: {}, name: {}, mode: [{:o}:{:o}], rdev: {}",
             std::file!(),
             std::line!(),
             function_name!(),
@@ -250,7 +251,8 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             parent,
             name,
             mode,
-            (0x4000 | (mode as u16 & 0x0fff)) as u32
+            // (0x4000 | (mode as u16 & 0x0fff)) as u32
+            mode,
         );
         match self.fs.mknod(
             parent,
@@ -574,59 +576,21 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
+        let mut curr_offset = offset + 1;
         match self.fs.readdir(ino, fh) {
             Some(children) => {
-                log::info!(
-                    "{}:{} {}, ino: {}, fh: {}, offset: {}, children: {:?}",
-                    std::file!(),
-                    std::line!(),
-                    function_name!(),
-                    ino,
-                    fh,
-                    offset,
-                    children
-                );
-                let mut i = 0;
-                let mut skip = 0;
-                if offset == 0 {
-                    let parent_node = self.fs.getnode(ino).unwrap();
-                    reply.add(parent_node.inode.unwrap(), 0, FileType::Directory, ".");
-                    let grantparent_node = if parent_node.inode.unwrap() == 1 {
-                        parent_node
-                    } else {
-                        self.fs.getnode(parent_node.parent.unwrap()).unwrap()
-                    };
-                    reply.add(
-                        grantparent_node.inode.unwrap(),
-                        1,
-                        FileType::Directory,
-                        "..",
-                    );
-                    i = 2;
-                } else {
-                    i = offset + 1;
-                    skip = offset as usize - 1;
-                }
-                for child in children.iter().skip(skip) {
-                    log::debug!(
-                        "{}:{} {} inode: {:?}, offset: {:?}, filetype: {:?}, path: {:?}",
-                        std::file!(),
-                        std::line!(),
-                        function_name!(),
-                        child.inode.unwrap(),
-                        i,
-                        child.attr.as_ref().unwrap().kind,
-                        child.path.as_ref().unwrap()
-                    );
+                for child in children.iter().skip(offset as usize) {
+                    let child: &Node = child;
                     if reply.add(
                         child.inode.unwrap(),
-                        i,
+                        curr_offset,
                         child.attr.as_ref().unwrap().kind,
-                        child.path.as_ref().unwrap(),
+                        child.path.as_ref().unwrap().file_name().unwrap(),
                     ) {
                         break;
+                    } else {
+                        curr_offset += 1;
                     }
-                    i = i + 1;
                 }
                 reply.ok();
             }

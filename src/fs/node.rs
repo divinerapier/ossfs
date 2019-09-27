@@ -14,7 +14,9 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(inode: u64, parent: u64, path: PathBuf, attr: FileAttr) -> Node {
+    pub fn new(inode: u64, parent: u64, path: PathBuf, mut attr: FileAttr) -> Node {
+        // assert_eq!(inode, attr.ino);
+        attr.ino = inode;
         Node {
             inode: Some(inode),
             parent: Some(parent),

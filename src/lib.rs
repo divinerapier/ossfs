@@ -6,9 +6,9 @@ mod test {
     fn test_api_parameters() {
         env_logger::from_env(env_logger::Env::default().default_filter_or("trace")).init();
         log::set_max_level(log::LevelFilter::max());
-        std::fs::create_dir_all("./tmp");
+        // std::fs::create_dir_all("/");
         std::fs::create_dir_all("./mnt");
-        let fs = super::fs::Fuse::new(super::fs::SimpleBackend::new("./tmp"));
+        let fs = super::fs::Fuse::new(super::fs::SimpleBackend::new("/"));
         let mountpoint = "./mnt";
         let options = ["-o", "rw", "-o", "fsname=cachefs"]
             .iter()

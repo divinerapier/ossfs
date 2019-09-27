@@ -9,13 +9,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
-pub type Inode = u64;
-
-const ROOT_INODE: Inode = 1;
-
 pub trait Backend {
     fn root(&self) -> Node;
-    // fn getattr<P: AsRef<Path> + Debug>(&self, path: P) -> Option<FileAttr>;
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String>;
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat>;
     fn mkdir<P: AsRef<Path> + Debug>(&self, path: P, mode: u32);
@@ -33,7 +28,7 @@ impl SimpleBackend {
         SimpleBackend {
             root,
             root_attr: FileAttr {
-                ino: ROOT_INODE,
+                ino: super::filesystem::ROOT_INODE,
                 /// Size in bytes
                 size: 4096,
                 /// Size in blocks
@@ -76,61 +71,15 @@ impl SimpleBackend {
 impl Backend for SimpleBackend {
     fn root(&self) -> Node {
         Node {
-            inode: Some(ROOT_INODE),
-            parent: Some(ROOT_INODE),
+            inode: Some(super::filesystem::ROOT_INODE),
+            parent: Some(super::filesystem::ROOT_INODE),
             path: Some(Path::new(self.root).to_path_buf()),
             attr: Some(self.root_attr),
         }
     }
 
-    // fn getattr<P: AsRef<Path>>(&self, path: P) -> Option<FileAttr> {
-    //     let meta: std::fs::Metadata = std::fs::metadata(path).ok()?;
-    //     Some(FileAttr {
-    //         ino: meta.ino(),
-    //         /// Size in bytes
-    //         size: meta.size(),
-    //         /// Size in blocks
-    //         blocks: meta.blocks(),
-    //         /// Time of last access
-    //         atime: std::time::UNIX_EPOCH
-    //             .clone()
-    //             .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-    //         /// Time of last modification
-    //         mtime: std::time::UNIX_EPOCH
-    //             .clone()
-    //             .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-    //         /// Time of last change
-    //         ctime: std::time::UNIX_EPOCH
-    //             .clone()
-    //             .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-    //         /// Time of creation (macOS only)
-    //         crtime: std::time::UNIX_EPOCH
-    //             .clone()
-    //             .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-    //         /// Kind of file (directory, file, pipe, etc)
-    //         kind: if meta.is_dir() {
-    //             FileType::Directory
-    //         } else {
-    //             FileType::RegularFile
-    //         },
-    //         /// Permissions
-    //         perm: meta.mode() as u16,
-    //         /// Number of hard links
-    //         nlink: meta.nlink() as u32,
-    //         /// User id
-    //         uid: meta.uid(),
-    //         /// Group id
-    //         gid: meta.gid(),
-    //         /// Rdev
-    //         rdev: meta.rdev() as u32,
-    //         /// Flags (macOS only, see chflags(2))
-    //         flags: 0,
-    //     })
-    // }
-
     #[named]
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String> {
-        let mut result = vec![];
         log::debug!(
             "{}:{} {} path: {:?}",
             std::file!(),
@@ -153,68 +102,68 @@ impl Backend for SimpleBackend {
             }
             Err(e) => return Err(format!("{}", e)),
         };
-        for (index, entry) in list.enumerate() {
-            let entry: std::fs::DirEntry = entry.unwrap();
-            let meta: std::fs::Metadata = entry.metadata().unwrap();
-            log::debug!(
-                "{}:{} {} path: {:?}, sub path: {:?}",
-                std::file!(),
-                std::line!(),
-                function_name!(),
-                path,
-                entry.path()
-            );
-            let node: Node = Node {
-                inode: None,
-                parent: None,
-                // offset: Some(index as u64),
-                path: Some(PathBuf::from(entry.path())),
-                attr: Some(FileAttr {
-                    ino: meta.ino(),
-                    /// Size in bytes
-                    size: meta.size(),
-                    /// Size in blocks
-                    blocks: meta.blocks(),
-                    /// Time of last access
-                    atime: std::time::UNIX_EPOCH
-                        .clone()
-                        .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-                    /// Time of last modification
-                    mtime: std::time::UNIX_EPOCH
-                        .clone()
-                        .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-                    /// Time of last change
-                    ctime: std::time::UNIX_EPOCH
-                        .clone()
-                        .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-                    /// Time of creation (macOS only)
-                    crtime: std::time::UNIX_EPOCH
-                        .clone()
-                        .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-                    /// Kind of file (directory, file, pipe, etc)
-                    kind: if meta.is_dir() {
-                        FileType::Directory
-                    } else {
-                        FileType::RegularFile
-                    },
-                    /// Permissions
-                    perm: meta.mode() as u16,
-                    /// Number of hard links
-                    nlink: meta.nlink() as u32,
-                    /// User id
-                    uid: meta.uid(),
-                    /// Group id
-                    gid: meta.gid(),
-                    /// Rdev
-                    rdev: meta.rdev() as u32,
-                    /// Flags (macOS only, see chflags(2))
-                    flags: 0,
-                }),
-            };
-            result.push(node);
-        }
 
-        Ok(result)
+        Ok(list
+            // .enumerate()
+            .map(|entry| {
+                let entry: std::fs::DirEntry = entry.unwrap();
+                let meta: std::fs::Metadata = entry.metadata().unwrap();
+                log::debug!(
+                    "{}:{} {} path: {:?}, sub path: {:?}",
+                    std::file!(),
+                    std::line!(),
+                    function_name!(),
+                    path,
+                    entry.path()
+                );
+                Node {
+                    inode: None,
+                    parent: None,
+                    path: Some(PathBuf::from(entry.path())),
+                    attr: Some(FileAttr {
+                        ino: 0,
+                        /// Size in bytes
+                        size: meta.size(),
+                        /// Size in blocks
+                        blocks: meta.blocks(),
+                        /// Time of last access
+                        atime: std::time::UNIX_EPOCH
+                            .clone()
+                            .add(std::time::Duration::from_secs(meta.atime() as u64)),
+                        /// Time of last modification
+                        mtime: std::time::UNIX_EPOCH
+                            .clone()
+                            .add(std::time::Duration::from_secs(meta.mtime() as u64)),
+                        /// Time of last change
+                        ctime: std::time::UNIX_EPOCH
+                            .clone()
+                            .add(std::time::Duration::from_secs(meta.ctime() as u64)),
+                        /// Time of creation (macOS only)
+                        crtime: std::time::UNIX_EPOCH
+                            .clone()
+                            .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+                        /// Kind of file (directory, file, pipe, etc)
+                        kind: if meta.is_dir() {
+                            FileType::Directory
+                        } else {
+                            FileType::RegularFile
+                        },
+                        /// Permissions
+                        perm: meta.mode() as u16,
+                        /// Number of hard links
+                        nlink: meta.nlink() as u32,
+                        /// User id
+                        uid: meta.uid(),
+                        /// Group id
+                        gid: meta.gid(),
+                        /// Rdev
+                        rdev: meta.rdev() as u32,
+                        /// Flags (macOS only, see chflags(2))
+                        flags: 0,
+                    }),
+                }
+            })
+            .collect::<Vec<Node>>())
     }
     #[named]
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat> {
