@@ -94,16 +94,6 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         Some(self.nodes_tree.index(*index).clone())
     }
 
-    pub fn getparentnode(&self, ino: u64) -> Option<Node> {
-        let node = self.getnode(ino)?;
-        self.getnode(node.parent.unwrap())
-    }
-
-    pub fn getgrandparentnode(&self, ino: u64) -> Option<Node> {
-        let parent_node = self.getparentnode(ino)?;
-        self.getparentnode(parent_node.parent.unwrap())
-    }
-
     pub fn add_node_locally(&mut self, parent_index: NodeIndex<u32>, child_node: Node) {
         let child_index = self.nodes_tree.add_child(parent_index, child_node);
         self.ino_mapper.insert(self.next_inode(), child_index);
@@ -240,7 +230,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let parent_node = self.nodes_tree.index(parent_index);
         let parent_path = parent_node.path.as_ref().unwrap();
         let child_path = parent_path.join(name);
-        self.backend.mkdir(&child_path, mode);
+        self.backend.mknod(&child_path, filetype, mode);
         let next_inode = self.next_inode();
         let node = Node::new(
             next_inode,
@@ -275,9 +265,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                 flags: 0,
             },
         );
-        let node_index = self.nodes_tree.add_child(parent_index, node.clone());
-        self.ino_mapper
-            .insert(self.ino_mapper.len() as u64, node_index);
+        self.add_node_locally(parent_index, node.clone());
         Some(node)
     }
 }

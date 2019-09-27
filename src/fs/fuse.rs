@@ -5,7 +5,7 @@ use function_name::named;
 use super::backend::Backend;
 use super::filesystem::FileSystem;
 use super::node::Node;
-use libc::{c_int, ENOENT, ENOSYS};
+use libc::{c_int, ENOENT, ENOSYS, ENOTDIR};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
@@ -604,7 +604,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     fh,
                     offset,
                 );
-                reply.error(ENOENT);
+                reply.error(ENOTDIR);
             }
         }
     }

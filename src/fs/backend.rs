@@ -13,7 +13,12 @@ pub trait Backend {
     fn root(&self) -> Node;
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String>;
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat>;
-    fn mkdir<P: AsRef<Path> + Debug>(&self, path: P, mode: u32);
+    fn mknod<P: AsRef<Path> + Debug>(
+        &self,
+        path: P,
+        filetype: FileType,
+        mode: u32,
+    ) -> Result<(), std::io::Error>;
 }
 
 #[derive(Debug)]
@@ -203,17 +208,45 @@ impl Backend for SimpleBackend {
             }
         }
     }
-    fn mkdir<P: AsRef<Path> + Debug>(&self, path: P, mode: u32) {
-        std::fs::create_dir_all(path.as_ref()).unwrap();
-        #[cfg(any(target_os = "unix", target_os = "macos"))]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perm = std::fs::Permissions::from_mode(mode);
-            std::fs::set_permissions(path.as_ref(), perm).unwrap();
-        }
-        #[cfg(any(target_os = "macos"))]
-        {
-            let meta = std::fs::metadata(path.as_ref()).unwrap();
-        }
+    fn mknod<P: AsRef<Path> + Debug>(
+        &self,
+        path: P,
+        filetype: FileType,
+        mode: u32,
+    ) -> Result<(), std::io::Error> {
+        Ok(match filetype {
+            FileType::Directory => {
+                std::fs::create_dir_all(path.as_ref())?;
+                #[cfg(any(target_os = "unix", target_os = "macos"))]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let perm = std::fs::Permissions::from_mode(mode);
+                    std::fs::set_permissions(path.as_ref(), perm)?;
+                }
+                #[cfg(any(target_os = "macos"))]
+                {
+                    // let meta = std::fs::metadata(path.as_ref())?;
+                }
+            }
+            FileType::RegularFile => {
+                let _ = std::fs::File::create(path.as_ref())?;
+                #[cfg(any(target_os = "unix", target_os = "macos"))]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let perm = std::fs::Permissions::from_mode(mode);
+                    std::fs::set_permissions(path.as_ref(), perm)?;
+                }
+                #[cfg(any(target_os = "macos"))]
+                {
+                    // let meta = std::fs::metadata(path.as_ref())?;
+                }
+            }
+            _ => log::error!(
+                "unknown filetype. path: {:?}, type: {:?}, mode: {}",
+                path,
+                filetype,
+                mode
+            ),
+        })
     }
 }
