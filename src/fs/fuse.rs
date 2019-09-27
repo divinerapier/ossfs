@@ -4,16 +4,11 @@ use function_name::named;
 
 use super::backend::Backend;
 use super::filesystem::FileSystem;
-use super::node::Node;
 use libc::{c_int, ENOENT, ENOSYS};
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::ops::Add;
-use std::os::unix::fs::MetadataExt;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
 use std::time::SystemTime;
 
 #[derive(Debug)]
@@ -620,13 +615,13 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                         function_name!(),
                         child.inode.unwrap(),
                         i,
-                        child.filetype.unwrap(),
+                        child.attr.as_ref().unwrap().kind,
                         child.path.as_ref().unwrap()
                     );
                     if reply.add(
                         child.inode.unwrap(),
                         i,
-                        child.filetype.unwrap(),
+                        child.attr.as_ref().unwrap().kind,
                         child.path.as_ref().unwrap(),
                     ) {
                         break;

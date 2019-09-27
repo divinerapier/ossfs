@@ -1,4 +1,4 @@
-use fuse::{FileAttr, FileType};
+use fuse::FileAttr;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -10,24 +10,15 @@ pub struct Node {
     // block offset
     // size of current node
     pub path: Option<PathBuf>,
-    pub filetype: Option<FileType>,
     pub attr: Option<FileAttr>,
 }
 
 impl Node {
-    pub fn new(
-        inode: u64,
-        parent: u64,
-        size: u64,
-        path: PathBuf,
-        filetype: FileType,
-        attr: FileAttr,
-    ) -> Node {
+    pub fn new(inode: u64, parent: u64, path: PathBuf, attr: FileAttr) -> Node {
         Node {
             inode: Some(inode),
             parent: Some(parent),
             path: Some(path),
-            filetype: Some(filetype),
             attr: Some(attr),
         }
     }
@@ -39,7 +30,6 @@ impl Default for Node {
             inode: None,
             parent: None,
             path: None,
-            filetype: None,
             attr: None,
         }
     }

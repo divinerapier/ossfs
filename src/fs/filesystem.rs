@@ -1,5 +1,4 @@
 use super::backend::Backend;
-use super::backend::Inode;
 use super::node::Node;
 use super::stat::Stat;
 use function_name::named;
@@ -10,8 +9,6 @@ use rose_tree::RoseTree;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ops::Index;
-use std::ops::IndexMut;
-use std::path::PathBuf;
 use std::time::SystemTime;
 
 #[derive(Debug)]
@@ -65,10 +62,6 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                     name
                 );
                 Ok(None)
-                // get from backend
-                // let parent_node: &Node = self.nodes_tree.index(*parent_index);
-                // let child_path: PathBuf = parent_node.path.as_ref().unwrap().join(name);
-                // self.backend.getattr(child_path)
             }
             None => {
                 log::error!(
@@ -221,9 +214,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let node = Node::new(
             next_inode,
             parent,
-            4096,
             child_path,
-            filetype,
             FileAttr {
                 ino: next_inode,
                 size: 4096,
