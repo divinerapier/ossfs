@@ -1,3 +1,5 @@
+use crate::fs::node::Node;
+use crate::fs::stat::Stat;
 use function_name::named;
 use fuse::{FileAttr, FileType};
 use std::fmt::Debug;
@@ -7,13 +9,14 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
-use crate::fs::node::Node;
-use crate::fs::stat::Stat;
+pub type Inode = u64;
+
+const ROOT_INODE: Inode = 1;
 
 pub trait Backend {
     fn root(&self) -> Node;
     fn getattr<P: AsRef<Path> + Debug>(&self, path: P) -> Option<FileAttr>;
-    fn readdir<P: AsRef<Path> + Debug>(&self, path: P, offset: usize) -> Option<Vec<Node>>;
+    fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String>;
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat>;
     fn mkdir<P: AsRef<Path> + Debug>(&self, path: P, mode: u32);
 }
@@ -30,9 +33,9 @@ impl SimpleBackend {
         SimpleBackend {
             root,
             root_attr: FileAttr {
-                ino: 1,
+                ino: ROOT_INODE,
                 /// Size in bytes
-                size: meta.size(),
+                size: 4096,
                 /// Size in blocks
                 blocks: meta.blocks(),
                 /// Time of last access
@@ -56,7 +59,7 @@ impl SimpleBackend {
                 /// Permissions
                 perm: meta.mode() as u16,
                 /// Number of hard links
-                nlink: meta.nlink() as u32,
+                nlink: 2,
                 /// User id
                 uid: meta.uid(),
                 /// Group id
@@ -73,9 +76,8 @@ impl SimpleBackend {
 impl Backend for SimpleBackend {
     fn root(&self) -> Node {
         Node {
-            inode: Some(1),
-            parent: Some(1),
-            size: Some(self.root_attr.size),
+            inode: Some(ROOT_INODE),
+            parent: Some(ROOT_INODE),
             path: Some(Path::new(self.root).to_path_buf()),
             filetype: Some(FileType::Directory),
             attr: Some(self.root_attr),
@@ -124,45 +126,31 @@ impl Backend for SimpleBackend {
     }
 
     #[named]
-    fn readdir<P: AsRef<Path> + Debug>(&self, path: P, offset: usize) -> Option<Vec<Node>> {
+    fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String> {
         let mut result = vec![];
-        // Add . / ..
         log::debug!(
-            "{}:{} {} path: {:?}, offset: {:?}",
+            "{}:{} {} path: {:?}",
             std::file!(),
             std::line!(),
             function_name!(),
             path,
-            offset
         );
 
         let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
             Ok(dir) => {
                 log::debug!(
-                    "{}:{} {} path: {:?}, offset: {:?}, dir: {:?}",
+                    "{}:{} {} path: {:?}, dir: {:?}",
                     std::file!(),
                     std::line!(),
                     function_name!(),
                     path,
-                    offset,
                     dir
                 );
                 dir
             }
-            Err(e) => {
-                log::error!(
-                    "{}:{} {} path: {:?}, offset: {}, error: {}",
-                    std::file!(),
-                    std::line!(),
-                    function_name!(),
-                    path,
-                    offset,
-                    e
-                );
-                return None;
-            }
+            Err(e) => return Err(format!("{}", e)),
         };
-        for (index, entry) in list.skip(offset).enumerate() {
+        for (index, entry) in list.enumerate() {
             let entry: std::fs::DirEntry = entry.unwrap();
             let meta: std::fs::Metadata = entry.metadata().unwrap();
             log::debug!(
@@ -177,7 +165,6 @@ impl Backend for SimpleBackend {
                 inode: None,
                 parent: None,
                 // offset: Some(index as u64),
-                size: Some(meta.size()),
                 path: Some(PathBuf::from(entry.path())),
                 filetype: if meta.is_dir() {
                     Some(FileType::Directory)
@@ -225,7 +212,7 @@ impl Backend for SimpleBackend {
             result.push(node);
         }
 
-        Some(result)
+        Ok(result)
     }
     #[named]
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat> {

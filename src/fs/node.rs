@@ -9,7 +9,6 @@ pub struct Node {
     pub parent: Option<u64>,
     // block offset
     // size of current node
-    pub size: Option<u64>,
     pub path: Option<PathBuf>,
     pub filetype: Option<FileType>,
     pub attr: Option<FileAttr>,
@@ -27,7 +26,6 @@ impl Node {
         Node {
             inode: Some(inode),
             parent: Some(parent),
-            size: Some(size),
             path: Some(path),
             filetype: Some(filetype),
             attr: Some(attr),
@@ -40,7 +38,6 @@ impl Default for Node {
         Node {
             inode: None,
             parent: None,
-            size: None,
             path: None,
             filetype: None,
             attr: None,
