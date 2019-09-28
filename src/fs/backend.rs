@@ -1,6 +1,5 @@
 use crate::fs::node::Node;
 use crate::fs::stat::Stat;
-use function_name::named;
 use fuse::{FileAttr, FileType};
 use std::fmt::Debug;
 use std::ops::Add;
@@ -83,23 +82,15 @@ impl Backend for SimpleBackend {
         }
     }
 
-    #[named]
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String> {
-        log::debug!(
-            "{}:{} {} path: {:?}",
-            std::file!(),
-            std::line!(),
-            function_name!(),
-            path,
-        );
+        log::debug!("{}:{} path: {:?}", std::file!(), std::line!(), path,);
 
         let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
             Ok(dir) => {
                 log::debug!(
-                    "{}:{} {} path: {:?}, dir: {:?}",
+                    "{}:{} path: {:?}, dir: {:?}",
                     std::file!(),
                     std::line!(),
-                    function_name!(),
                     path,
                     dir
                 );
@@ -114,10 +105,9 @@ impl Backend for SimpleBackend {
                 let entry: std::fs::DirEntry = entry.unwrap();
                 let meta: std::fs::Metadata = entry.metadata().unwrap();
                 log::debug!(
-                    "{}:{} {} path: {:?}, sub path: {:?}",
+                    "{}:{} path: {:?}, sub path: {:?}",
                     std::file!(),
                     std::line!(),
-                    function_name!(),
                     path,
                     entry.path()
                 );
@@ -170,15 +160,8 @@ impl Backend for SimpleBackend {
             })
             .collect::<Vec<Node>>())
     }
-    #[named]
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat> {
-        log::debug!(
-            "{}:{} {} path: {:?}",
-            std::file!(),
-            std::line!(),
-            function_name!(),
-            path
-        );
+        log::debug!("{}:{} path: {:?}", std::file!(), std::line!(), path);
         match nix::sys::statfs::statfs(path.as_ref()) {
             #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
             Ok(stat) => Some(Stat {

@@ -5,10 +5,10 @@ use fuse::FileType;
 use rusoto_core::credential::ChainProvider;
 use rusoto_core::request::HttpClient;
 use rusoto_core::Region;
-use rusoto_s3::{S3Client, S3};
+use rusoto_s3::S3Client;
 use std::fmt::Debug;
 use std::path::Path;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 pub struct S3Backend {
     client: S3Client,

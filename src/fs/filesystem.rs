@@ -1,7 +1,6 @@
 use super::backend::Backend;
 use super::node::Node;
 use super::stat::Stat;
-use function_name::named;
 use fuse::{FileAttr, FileType};
 use rose_tree::petgraph::graph::DefaultIx;
 use rose_tree::petgraph::graph::NodeIndex;
@@ -42,7 +41,6 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.ino_mapper.len() as u64 + 1
     }
 
-    #[named]
     pub fn lookup(&self, ino: u64, name: &OsStr) -> Result<Option<FileAttr>, String> {
         match self.ino_mapper.get(&ino) {
             Some(parent_index) => {
@@ -58,10 +56,9 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                     }
                 }
                 log::warn!(
-                    "{}:{} {} parent: {}, name: {:?} not found",
+                    "{}:{} parent: {}, name: {:?} not found",
                     std::file!(),
                     std::line!(),
-                    function_name!(),
                     ino,
                     name
                 );
@@ -69,10 +66,9 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             }
             None => {
                 log::error!(
-                    "{}:{} {} parent ino: {} name: {:?} not found",
+                    "{}:{} parent ino: {} name: {:?} not found",
                     std::file!(),
                     std::line!(),
-                    function_name!(),
                     ino,
                     name,
                 );
@@ -135,7 +131,6 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         }
     }
 
-    #[named]
     pub fn readdir(&mut self, parent_ino: u64, file_handle: u64) -> Option<Vec<Node>> {
         // read from local node tree
         let parent_index = match self.ino_mapper.get(&parent_ino) {
@@ -147,10 +142,9 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         }
         if let Err(e) = self.fetch_children(parent_index) {
             log::error!(
-                "{}:{} {} parent_ino: {}, parent_index: {:?}, error: {}",
+                "{}:{} parent_ino: {}, parent_index: {:?}, error: {}",
                 std::file!(),
                 std::line!(),
-                function_name!(),
                 parent_ino,
                 parent_index,
                 e
@@ -162,17 +156,10 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.readdir_local(parent_index)
     }
 
-    #[named]
     pub fn statfs(&self, ino: u64) -> Option<Stat> {
         match self.ino_mapper.get(&ino) {
             None => {
-                println!(
-                    "{}:{} {} ino: {} not found",
-                    std::file!(),
-                    std::line!(),
-                    function_name!(),
-                    ino
-                );
+                println!("{}:{} ino: {} not found", std::file!(), std::line!(), ino);
                 return None;
             }
             Some(node_index) => {
@@ -183,7 +170,6 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         }
     }
 
-    #[named]
     pub fn mknod(
         &mut self,
         parent: u64,
@@ -199,10 +185,9 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             Some(parent_index) => *parent_index,
             None => {
                 log::error!(
-                    "{}:{} {} parent: {}, name: {:?}, mode: {:o}, index: {:?}",
+                    "{}:{} parent: {}, name: {:?}, mode: {:o}, index: {:?}",
                     std::line!(),
                     std::file!(),
-                    function_name!(),
                     parent,
                     name,
                     mode,
@@ -217,10 +202,9 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             let child_node: &Node = self.nodes_tree.index(child_node_index);
             if child_node.path.as_ref().unwrap().file_name().unwrap() == name {
                 log::warn!(
-                    "{}:{} {} parent: {}, name: {:?} exists",
+                    "{}:{} parent: {}, name: {:?} exists",
                     std::file!(),
                     std::line!(),
-                    function_name!(),
                     parent,
                     name
                 );
