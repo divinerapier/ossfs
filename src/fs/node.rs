@@ -1,7 +1,7 @@
 use fuse::FileAttr;
 use std::path::PathBuf;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Node {
     // inode of it self
     pub inode: Option<u64>,
@@ -22,17 +22,6 @@ impl Node {
             parent: Some(parent),
             path: Some(path),
             attr: Some(attr),
-        }
-    }
-}
-
-impl Default for Node {
-    fn default() -> Node {
-        Node {
-            inode: None,
-            parent: None,
-            path: None,
-            attr: None,
         }
     }
 }
