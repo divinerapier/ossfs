@@ -13,6 +13,6 @@ time = "0.1.42"
 log = "0.4.8"
 env_logger = "0.6.2"
 nix = "0.15.0"
-rose_tree = {git = "https://github.com/divinerapier/rose_tree-rs"}
+rose_tree = {git = "https://github.com/divinerapier/rose_tree-rs", tag = "0.2.0"}
 rusoto_s3 = "0.40.0"
 rusoto_core = "0.40.0"
