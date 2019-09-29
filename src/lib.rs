@@ -10,7 +10,7 @@ mod test {
         std::fs::create_dir_all("./mnt");
         // let fs = super::fs::Fuse::new(super::fs::SimpleBackend::new("./tmp"));
         let fs = super::fs::Fuse::new(super::fs::s3::S3Backend::new(
-            "http://127.0.0.1:9001",
+            "http://172.21.20.134:9001",
             "5577006791947779410",
             "admin",
             "password",

@@ -170,8 +170,8 @@ impl Backend for SimpleBackend {
                 blocks_available: stat.blocks_available(),
                 files: stat.files(),
                 files_free: stat.files_free(),
-                block_size: stat.block_size(),
-                namelen: stat.maximum_name_length(),
+                block_size: stat.block_size() as u32,
+                namelen: stat.maximum_name_length() as u32,
                 frsize: 4096,
             }),
             #[cfg(any(target_os = "ios", target_os = "macos",))]
