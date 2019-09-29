@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use crate::ossfs_impl::backend::Backend;
 use crate::ossfs_impl::node::Node;
 use crate::ossfs_impl::stat::Stat;
@@ -41,7 +42,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.ino_mapper.len() as u64 + 1
     }
 
-    pub fn lookup(&self, ino: u64, name: &OsStr) -> Result<Option<FileAttr>, String> {
+    pub fn lookup(&self, ino: u64, name: &OsStr) -> Result<Option<FileAttr>> {
         match self.ino_mapper.get(&ino) {
             Some(parent_index) => {
                 for child_index in self.nodes_tree.children(*parent_index) {
@@ -72,7 +73,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                     ino,
                     name,
                 );
-                Err(format!("parent not found"))
+                Err(Error::Naive(format!("parent not found")))
             }
         }
     }
@@ -95,16 +96,19 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.ino_mapper.insert(self.next_inode(), child_index);
     }
 
-    pub fn fetch_children(&mut self, index: NodeIndex<u32>) -> Result<(), String> {
+    pub fn fetch_children(&mut self, index: NodeIndex<u32>) -> Result<()> {
         let parent_node: &Node = self.nodes_tree.index(index);
         let parent_inode = parent_node.inode.clone();
         parent_node
             .path
             .as_ref()
             .map(|path| self.backend.get_children(path))
-            .ok_or(format!("get children from backend. {:?}", index))?
+            .ok_or(Error::Naive(format!(
+                "get children from backend. {:?}",
+                index
+            )))
             .map(|children| {
-                let children: Vec<Node> = children;
+                let children: Vec<Node> = children.unwrap();
                 for mut child in children {
                     let inode = self.next_inode();
                     child.inode = Some(inode);
@@ -157,18 +161,34 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.readdir_local(parent_index)
     }
 
-    pub fn statfs(&self, ino: u64) -> Option<Stat> {
-        match self.ino_mapper.get(&ino) {
-            None => {
-                println!("{}:{} ino: {} not found", std::file!(), std::line!(), ino);
-                return None;
-            }
-            Some(node_index) => {
-                return self
-                    .backend
-                    .statfs(self.nodes_tree.index(*node_index).path.as_ref().unwrap());
-            }
-        }
+    pub fn statfs(&self, ino: u64) -> Result<Stat> {
+        self.ino_mapper
+            .get(&ino)
+            .ok_or(Error::Naive(format!("ino not found. {}", ino)))
+            .and_then(|index| -> Result<Stat> {
+                self.backend
+                    .statfs(self.nodes_tree.index(*index).path.as_ref().unwrap())
+            })
+        // None => {
+        //     println!("{}:{} ino: {} not found", std::file!(), std::line!(), ino);
+        //     return None;
+        // }
+        // Some(node_index) => {
+        //     return self
+        //         .backend
+        //         .statfs(self.nodes_tree.index(*node_index).path.as_ref().unwrap());
+        // }
+        // match self.ino_mapper.get(&ino) {
+        //     None => {
+        //         println!("{}:{} ino: {} not found", std::file!(), std::line!(), ino);
+        //         return None;
+        //     }
+        //     Some(node_index) => {
+        //         return self
+        //             .backend
+        //             .statfs(self.nodes_tree.index(*node_index).path.as_ref().unwrap());
+        //     }
+        // }
     }
 
     pub fn mknod(

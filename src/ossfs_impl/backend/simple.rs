@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use crate::ossfs_impl::filesystem::ROOT_INODE;
 use crate::ossfs_impl::node::Node;
 use crate::ossfs_impl::stat::Stat;
@@ -71,7 +72,7 @@ impl super::Backend for SimpleBackend {
         }
     }
 
-    fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String> {
+    fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>> {
         log::debug!("{}:{} path: {:?}", std::file!(), std::line!(), path,);
 
         let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
@@ -85,7 +86,7 @@ impl super::Backend for SimpleBackend {
                 );
                 dir
             }
-            Err(e) => return Err(format!("{}", e)),
+            Err(e) => return Err(Error::Naive(format!("{}", e))),
         };
 
         Ok(list
@@ -149,43 +150,45 @@ impl super::Backend for SimpleBackend {
             })
             .collect::<Vec<Node>>())
     }
-    fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat> {
+
+    fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Stat> {
         log::debug!("{}:{} path: {:?}", std::file!(), std::line!(), path);
-        match nix::sys::statfs::statfs(path.as_ref()) {
-            #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
-            Ok(stat) => Some(Stat {
-                blocks: stat.blocks(),
-                blocks_free: stat.blocks_free(),
-                blocks_available: stat.blocks_available(),
-                files: stat.files(),
-                files_free: stat.files_free(),
-                block_size: stat.block_size() as u32,
-                namelen: stat.maximum_name_length() as u32,
-                frsize: 4096,
-            }),
-            #[cfg(any(target_os = "ios", target_os = "macos",))]
-            Ok(stat) => Some(Stat {
-                blocks: stat.blocks(),
-                blocks_free: stat.blocks_free(),
-                blocks_available: stat.blocks_available(),
-                files: stat.files(),
-                files_free: stat.files_free(),
-                block_size: stat.block_size(),
-                namelen: 65535,
-                frsize: 4096,
-            }),
-            Err(err) => {
+        nix::sys::statfs::statfs(path.as_ref())
+            .map(|stat| -> Stat {
+                #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
+                {
+                    Stat {
+                        blocks: stat.blocks(),
+                        blocks_free: stat.blocks_free(),
+                        blocks_available: stat.blocks_available(),
+                        files: stat.files(),
+                        files_free: stat.files_free(),
+                        block_size: stat.block_size() as u32,
+                        namelen: stat.maximum_name_length() as u32,
+                        frsize: 4096,
+                    }
+                }
+                #[cfg(any(target_os = "ios", target_os = "macos",))]
+                {
+                    Stat {
+                        blocks: stat.blocks(),
+                        blocks_free: stat.blocks_free(),
+                        blocks_available: stat.blocks_available(),
+                        files: stat.files(),
+                        files_free: stat.files_free(),
+                        block_size: stat.block_size(),
+                        namelen: 65535,
+                        frsize: 4096,
+                    }
+                }
+            })
+            .map_err(|err| {
                 println!("stat failed, error: {}", err);
-                None
-            }
-        }
+                Error::Nix(err)
+            })
     }
-    fn mknod<P: AsRef<Path> + Debug>(
-        &self,
-        path: P,
-        filetype: FileType,
-        mode: u32,
-    ) -> Result<(), std::io::Error> {
+
+    fn mknod<P: AsRef<Path> + Debug>(&self, path: P, filetype: FileType, mode: u32) -> Result<()> {
         Ok(match filetype {
             FileType::Directory => {
                 std::fs::create_dir_all(path.as_ref())?;

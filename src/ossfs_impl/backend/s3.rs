@@ -1,3 +1,4 @@
+use crate::error::{Error, Result};
 use crate::ossfs_impl::backend::Backend;
 use crate::ossfs_impl::node::Node;
 use crate::ossfs_impl::stat::Stat;
@@ -111,7 +112,7 @@ impl Backend for S3Backend {
             }
         }
     }
-    fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String> {
+    fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>> {
         let path_str = path.as_ref().to_str().unwrap().to_owned();
         let resp: ListObjectsV2Output = self
             .client
@@ -222,18 +223,17 @@ impl Backend for S3Backend {
         // log::error!("{}:{} children: {:?}", std::file!(), std::line!(), nodes1);
         Ok(nodes1)
     }
-    fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat> {
+    fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Stat> {
         let key = path.as_ref().to_str().unwrap().to_owned();
-        let resp: HeadObjectOutput = self
+        let a = self
             .client
             .head_object(HeadObjectRequest {
                 bucket: self.bucket.clone(),
                 key,
                 ..HeadObjectRequest::default()
             })
-            .sync()
-            .unwrap();
-        Some(Stat {
+            .sync();
+        Ok(Stat {
             blocks: 1,
             blocks_free: 1,
             blocks_available: 1,
@@ -244,12 +244,7 @@ impl Backend for S3Backend {
             frsize: 1,
         })
     }
-    fn mknod<P: AsRef<Path> + Debug>(
-        &self,
-        path: P,
-        filetype: FileType,
-        mode: u32,
-    ) -> Result<(), std::io::Error> {
+    fn mknod<P: AsRef<Path> + Debug>(&self, path: P, filetype: FileType, mode: u32) -> Result<()> {
         unimplemented!()
     }
 }

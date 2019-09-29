@@ -624,7 +624,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
 
     fn statfs(&mut self, _req: &Request, _ino: u64, reply: ReplyStatfs) {
         match self.fs.statfs(_ino) {
-            Some(stat) => {
+            Ok(stat) => {
                 log::info!(
                     "{}:{}, ino: {}, stat: {:?}",
                     std::file!(),
@@ -643,8 +643,14 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     stat.frsize,
                 );
             }
-            None => {
-                log::info!("{}:{}, ino: {}", std::file!(), std::line!(), _ino);
+            Err(e) => {
+                log::info!(
+                    "{}:{}, ino: {}, error: {}",
+                    std::file!(),
+                    std::line!(),
+                    _ino,
+                    e
+                );
                 reply.error(ENOENT);
             }
         }
