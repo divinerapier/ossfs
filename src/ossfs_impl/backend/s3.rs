@@ -1,19 +1,20 @@
-use super::backend::Backend;
-use super::node::Node;
-use super::stat::Stat;
+use crate::ossfs_impl::backend::Backend;
+use crate::ossfs_impl::node::Node;
+use crate::ossfs_impl::stat::Stat;
 use fuse::{FileAttr, FileType};
 use rusoto_core::credential::ChainProvider;
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::request::HttpClient;
 use rusoto_core::Region;
 use rusoto_s3::{
-    CommonPrefix, GetObjectRequest, HeadBucketRequest, HeadObjectOutput, HeadObjectRequest,
-    ListObjectsV2Output, ListObjectsV2Request, Object, S3Client, S3,
+    CommonPrefix, HeadBucketRequest, HeadObjectOutput, HeadObjectRequest, ListObjectsV2Output,
+    ListObjectsV2Request, Object, S3Client, S3,
 };
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, UNIX_EPOCH};
-use users::Users;
+use std::time::UNIX_EPOCH;
+
+use crate::ossfs_impl::filesystem::ROOT_INODE;
 
 pub struct S3Backend {
     client: S3Client,
@@ -71,11 +72,11 @@ impl Backend for S3Backend {
             Ok(_) => {
                 log::debug!("uid: {}, gid: {}", self.uid, self.gid);
                 Node {
-                    inode: Some(super::filesystem::ROOT_INODE),
-                    parent: Some(super::filesystem::ROOT_INODE),
+                    inode: Some(ROOT_INODE),
+                    parent: Some(ROOT_INODE),
                     path: Some(PathBuf::from("")),
                     attr: Some(FileAttr {
-                        ino: super::filesystem::ROOT_INODE,
+                        ino: ROOT_INODE,
                         /// Size in bytes
                         size: 4096,
                         /// Size in blocks

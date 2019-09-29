@@ -1,4 +1,7 @@
-pub mod fs;
+mod ossfs_impl;
+
+pub use ossfs_impl::backend::{s3::S3Backend, simple::SimpleBackend, Backend};
+pub use ossfs_impl::Fuse;
 
 #[cfg(test)]
 mod test {
@@ -9,7 +12,7 @@ mod test {
         std::fs::create_dir_all("./tmp");
         std::fs::create_dir_all("./mnt");
         // let fs = super::fs::Fuse::new(super::fs::SimpleBackend::new("./tmp"));
-        let fs = super::fs::Fuse::new(super::fs::s3::S3Backend::new(
+        let fs = super::Fuse::new(super::S3Backend::new(
             "http://172.21.20.134:9001",
             "5577006791947779410",
             "admin",

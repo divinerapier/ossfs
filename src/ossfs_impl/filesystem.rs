@@ -1,6 +1,6 @@
-use super::backend::Backend;
-use super::node::Node;
-use super::stat::Stat;
+use crate::ossfs_impl::backend::Backend;
+use crate::ossfs_impl::node::Node;
+use crate::ossfs_impl::stat::Stat;
 use fuse::{FileAttr, FileType};
 use rose_tree::petgraph::graph::DefaultIx;
 use rose_tree::petgraph::graph::NodeIndex;

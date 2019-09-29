@@ -1,5 +1,6 @@
-use crate::fs::node::Node;
-use crate::fs::stat::Stat;
+use crate::ossfs_impl::filesystem::ROOT_INODE;
+use crate::ossfs_impl::node::Node;
+use crate::ossfs_impl::stat::Stat;
 use fuse::{FileAttr, FileType};
 use std::fmt::Debug;
 use std::ops::Add;
@@ -7,18 +8,6 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
-
-pub trait Backend {
-    fn root(&self) -> Node;
-    fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String>;
-    fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat>;
-    fn mknod<P: AsRef<Path> + Debug>(
-        &self,
-        path: P,
-        filetype: FileType,
-        mode: u32,
-    ) -> Result<(), std::io::Error>;
-}
 
 #[derive(Debug)]
 pub struct SimpleBackend {
@@ -32,7 +21,7 @@ impl SimpleBackend {
         SimpleBackend {
             root,
             root_attr: FileAttr {
-                ino: super::filesystem::ROOT_INODE,
+                ino: ROOT_INODE,
                 /// Size in bytes
                 size: 4096,
                 /// Size in blocks
@@ -72,11 +61,11 @@ impl SimpleBackend {
     }
 }
 
-impl Backend for SimpleBackend {
+impl super::Backend for SimpleBackend {
     fn root(&self) -> Node {
         Node {
-            inode: Some(super::filesystem::ROOT_INODE),
-            parent: Some(super::filesystem::ROOT_INODE),
+            inode: Some(ROOT_INODE),
+            parent: Some(ROOT_INODE),
             path: Some(Path::new(self.root).to_path_buf()),
             attr: Some(self.root_attr),
         }
