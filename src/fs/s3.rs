@@ -6,15 +6,27 @@ use rusoto_core::credential::ChainProvider;
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::request::HttpClient;
 use rusoto_core::Region;
-use rusoto_s3::{GetObjectRequest, HeadBucketRequest, ListObjectsV2Request, S3Client, S3};
+use rusoto_s3::{
+    CommonPrefix, GetObjectRequest, HeadBucketRequest, HeadObjectOutput, HeadObjectRequest,
+    ListObjectsV2Output, ListObjectsV2Request, Object, S3Client, S3,
+};
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, UNIX_EPOCH};
+use users::Users;
 
 pub struct S3Backend {
     client: S3Client,
     bucket: String,
     root: Option<Node>,
+    uid: u32,
+    gid: u32,
+}
+
+impl std::fmt::Debug for S3Backend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "bucket: {}, root: {:?}", self.bucket, self.root)
+    }
 }
 
 impl S3Backend {
@@ -36,6 +48,8 @@ impl S3Backend {
             client,
             bucket: bucket.into(),
             root: None,
+            uid: unsafe { libc::getuid() },
+            gid: unsafe { libc::getgid() },
         }
     }
 }
@@ -55,9 +69,10 @@ impl Backend for S3Backend {
             .sync();
         match resp_result {
             Ok(_) => {
+                log::debug!("uid: {}, gid: {}", self.uid, self.gid);
                 Node {
-                    inode: Some(1),
-                    parent: Some(1),
+                    inode: Some(super::filesystem::ROOT_INODE),
+                    parent: Some(super::filesystem::ROOT_INODE),
                     path: Some(PathBuf::from("")),
                     attr: Some(FileAttr {
                         ino: super::filesystem::ROOT_INODE,
@@ -80,9 +95,9 @@ impl Backend for S3Backend {
                         /// Number of hard links
                         nlink: 2,
                         /// User id
-                        uid: 0,
+                        uid: self.uid,
                         /// Group id
-                        gid: 0,
+                        gid: self.gid,
                         /// Rdev
                         rdev: 0,
                         /// Flags (macOS only, see chflags(2))
@@ -96,17 +111,137 @@ impl Backend for S3Backend {
         }
     }
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>, String> {
-        let path = path.as_ref().to_str().unwrap().to_owned();
-        self.client.list_objects_v2(ListObjectsV2Request {
-            bucket: self.bucket.clone(),
-            prefix: if path == "" { None } else { Some(path) },
-            max_keys: Some(1000),
-            ..ListObjectsV2Request::default()
-        });
-        Err(String::from(""))
+        let path_str = path.as_ref().to_str().unwrap().to_owned();
+        let resp: ListObjectsV2Output = self
+            .client
+            .list_objects_v2(ListObjectsV2Request {
+                bucket: self.bucket.clone(),
+                prefix: if path_str == "" { None } else { Some(path_str) },
+                max_keys: Some(1000),
+                delimiter: Some(String::from("/")),
+                ..ListObjectsV2Request::default()
+            })
+            .sync()
+            .unwrap();
+        let mut nodes1 = {
+            if let Some(common_prefix) = resp.common_prefixes {
+                let nodes: Vec<Node> = common_prefix
+                    .iter()
+                    .filter(|prefix| -> bool {
+                        let prefix: &CommonPrefix = prefix;
+                        prefix.prefix.is_some()
+                    })
+                    .filter(|prefix| -> bool {
+                        log::info!("{}:{} prefix: {:?}", std::file!(), std::line!(), prefix);
+                        true
+                    })
+                    .map(|prefix| {
+                        let prefix: &CommonPrefix = prefix;
+                        log::debug!(
+                            "{}:{} parent: {:?}, prefix: {:?}",
+                            std::file!(),
+                            std::line!(),
+                            path,
+                            prefix
+                        );
+                        Node {
+                            inode: None,
+                            parent: None,
+                            path: Some(Path::new(&prefix.prefix.clone().unwrap()).to_path_buf()),
+                            attr: Some(FileAttr {
+                                ino: 0,
+                                size: 4096,
+                                blocks: 0,
+                                atime: UNIX_EPOCH,
+                                mtime: UNIX_EPOCH,
+                                ctime: UNIX_EPOCH,
+                                crtime: UNIX_EPOCH,
+                                kind: FileType::Directory,
+                                perm: 0o755,
+                                nlink: 2,
+                                uid: self.uid,
+                                gid: self.gid,
+                                rdev: 0,
+                                flags: 0,
+                            }),
+                        }
+                    })
+                    .collect();
+                nodes
+            } else {
+                Vec::new()
+            }
+        };
+        log::error!(
+            "{}:{} common prefix: {:?}",
+            std::file!(),
+            std::line!(),
+            nodes1
+        );
+        let mut nodes2 = {
+            if let Some(contents) = resp.contents {
+                let nodes: Vec<Node> = contents
+                    .iter()
+                    .filter(|object| -> bool {
+                        let object: &Object = object;
+                        object.key.is_some()
+                    })
+                    .map(|object| {
+                        let object: &Object = object;
+                        Node {
+                            inode: None,
+                            parent: None,
+                            path: Some(Path::new(&object.key.clone().unwrap()).to_path_buf()),
+                            attr: Some(FileAttr {
+                                ino: 0,
+                                size: object.size.unwrap() as u64,
+                                blocks: 0,
+                                atime: UNIX_EPOCH,
+                                mtime: UNIX_EPOCH,
+                                ctime: UNIX_EPOCH,
+                                crtime: UNIX_EPOCH,
+                                kind: FileType::RegularFile,
+                                perm: 0o644,
+                                nlink: 2,
+                                uid: 0,
+                                gid: 0,
+                                rdev: 0,
+                                flags: 0,
+                            }),
+                        }
+                    })
+                    .collect();
+                nodes
+            } else {
+                Vec::new()
+            }
+        };
+        log::error!("{}:{} children: {:?}", std::file!(), std::line!(), nodes2);
+        nodes1.append(&mut nodes2);
+        // log::error!("{}:{} children: {:?}", std::file!(), std::line!(), nodes1);
+        Ok(nodes1)
     }
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Option<Stat> {
-        None
+        let key = path.as_ref().to_str().unwrap().to_owned();
+        let resp: HeadObjectOutput = self
+            .client
+            .head_object(HeadObjectRequest {
+                bucket: self.bucket.clone(),
+                key,
+                ..HeadObjectRequest::default()
+            })
+            .sync()
+            .unwrap();
+        Some(Stat {
+            blocks: 1,
+            blocks_free: 1,
+            blocks_available: 1,
+            files: 1,
+            files_free: 1,
+            block_size: 1,
+            namelen: 65535,
+            frsize: 1,
+        })
     }
     fn mknod<P: AsRef<Path> + Debug>(
         &self,

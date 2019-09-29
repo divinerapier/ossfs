@@ -55,13 +55,13 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                         return Ok(child.attr);
                     }
                 }
-                log::warn!(
-                    "{}:{} parent: {}, name: {:?} not found",
-                    std::file!(),
-                    std::line!(),
-                    ino,
-                    name
-                );
+                // log::warn!(
+                //     "{}:{} parent: {}, name: {:?} not found",
+                //     std::file!(),
+                //     std::line!(),
+                //     ino,
+                //     name
+                // );
                 Ok(None)
             }
             None => {
@@ -97,7 +97,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
 
     pub fn fetch_children(&mut self, index: NodeIndex<u32>) -> Result<(), String> {
         let parent_node: &Node = self.nodes_tree.index(index);
-
+        let parent_inode = parent_node.inode.clone();
         parent_node
             .path
             .as_ref()
@@ -108,6 +108,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                 for mut child in children {
                     let inode = self.next_inode();
                     child.inode = Some(inode);
+                    child.parent = parent_inode.clone();
                     child.attr.as_mut().unwrap().ino = inode;
                     self.add_node_locally(index, child);
                 }

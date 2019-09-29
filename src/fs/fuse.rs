@@ -63,24 +63,24 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                 reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
             }
             Ok(None) => {
-                log::warn!(
-                    "{}:{}  parent: {}, name: {}",
-                    std::file!(),
-                    std::line!(),
-                    parent,
-                    name.to_string_lossy(),
-                );
+                // log::warn!(
+                //     "{}:{}  parent: {}, name: {}",
+                //     std::file!(),
+                //     std::line!(),
+                //     parent,
+                //     name.to_string_lossy(),
+                // );
                 reply.error(ENOENT);
             }
             Err(e) => {
-                log::error!(
-                    "{}:{} parent: {}, name: {}, error: {}",
-                    std::file!(),
-                    std::line!(),
-                    parent,
-                    name.to_string_lossy(),
-                    e
-                );
+                // log::error!(
+                //     "{}:{} parent: {}, name: {}, error: {}",
+                //     std::file!(),
+                //     std::line!(),
+                //     parent,
+                //     name.to_string_lossy(),
+                //     e
+                // );
                 reply.error(ENOENT);
             }
         }
@@ -109,13 +109,13 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         match self.fs.getattr(ino) {
             Some(attr) => {
-                log::info!(
-                    "{}:{} ino: {}, attr: {:?}",
-                    std::file!(),
-                    std::line!(),
-                    ino,
-                    attr
-                );
+                // log::info!(
+                //     "{}:{} ino: {}, attr: {:?}",
+                //     std::file!(),
+                //     std::line!(),
+                //     ino,
+                //     attr
+                // );
                 reply.attr(&std::time::Duration::from_secs(1), &attr);
             }
             None => {

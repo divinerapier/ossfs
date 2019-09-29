@@ -16,3 +16,4 @@ nix = "0.15.0"
 rose_tree = {git = "https://github.com/divinerapier/rose_tree-rs", tag = "0.2.0"}
 rusoto_s3 = "0.40.0"
 rusoto_core = "0.40.0"
+users = "*"
