@@ -112,8 +112,21 @@ impl Backend for S3Backend {
             }
         }
     }
+
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>> {
-        let path_str = path.as_ref().to_str().unwrap().to_owned();
+        let path_str = path
+            .as_ref()
+            .to_str()
+            .ok_or_else(|| {
+                log::error!(
+                    "{}:{} failed to convert path to string. {:?}",
+                    std::file!(),
+                    std::line!(),
+                    path
+                );
+                Error::Naive(format!("parse path: {:?}", path))
+            })?
+            .to_owned();
         let resp: ListObjectsV2Output = self
             .client
             .list_objects_v2(ListObjectsV2Request {
@@ -123,8 +136,8 @@ impl Backend for S3Backend {
                 delimiter: Some(String::from("/")),
                 ..ListObjectsV2Request::default()
             })
-            .sync()
-            .unwrap();
+            .sync()?;
+
         let mut nodes1 = {
             if let Some(common_prefix) = resp.common_prefixes {
                 let nodes: Vec<Node> = common_prefix
@@ -174,12 +187,6 @@ impl Backend for S3Backend {
                 Vec::new()
             }
         };
-        log::error!(
-            "{}:{} common prefix: {:?}",
-            std::file!(),
-            std::line!(),
-            nodes1
-        );
         let mut nodes2 = {
             if let Some(contents) = resp.contents {
                 let nodes: Vec<Node> = contents
@@ -218,21 +225,31 @@ impl Backend for S3Backend {
                 Vec::new()
             }
         };
-        log::error!("{}:{} children: {:?}", std::file!(), std::line!(), nodes2);
         nodes1.append(&mut nodes2);
-        // log::error!("{}:{} children: {:?}", std::file!(), std::line!(), nodes1);
         Ok(nodes1)
     }
+
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Stat> {
-        let key = path.as_ref().to_str().unwrap().to_owned();
-        let a = self
-            .client
+        let key = path
+            .as_ref()
+            .to_str()
+            .ok_or_else(|| {
+                log::error!(
+                    "{}:{} failed to convert path to string. {:?}",
+                    std::file!(),
+                    std::line!(),
+                    path
+                );
+                Error::Naive(format!("parse path: {:?}", path))
+            })?
+            .to_owned();
+        self.client
             .head_object(HeadObjectRequest {
                 bucket: self.bucket.clone(),
                 key,
                 ..HeadObjectRequest::default()
             })
-            .sync();
+            .sync()?;
         Ok(Stat {
             blocks: 1,
             blocks_free: 1,

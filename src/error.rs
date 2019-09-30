@@ -14,7 +14,7 @@ impl std::fmt::Display for Error {
             Error::Backend(message) => write!(f, "[backend] {}", message),
             Error::IO(io_error) => io_error.fmt(f),
             Error::Nix(e) => e.fmt(f),
-            Error::Naive(e) => write!(f, "[naive] {}", e),
+            Error::Naive(e) => write!(f, "{}", e),
         }
     }
 }
@@ -26,5 +26,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Error {
         Error::IO(e)
+    }
+}
+
+impl<T> From<rusoto_core::RusotoError<T>> for Error
+where
+    T: 'static + std::fmt::Display + std::error::Error,
+{
+    fn from(e: rusoto_core::RusotoError<T>) -> Error {
+        Error::Backend(format!("{}", e))
     }
 }

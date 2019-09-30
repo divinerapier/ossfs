@@ -11,7 +11,7 @@ mod test {
         env_logger::from_env(env_logger::Env::default().default_filter_or("trace")).init();
         log::set_max_level(log::LevelFilter::max());
         std::fs::create_dir_all("./tmp");
-        std::fs::create_dir_all("./mnt");
+        // std::fs::create_dir_all("./mnt");
         // let fs = super::fs::Fuse::new(super::fs::SimpleBackend::new("./tmp"));
         let fs = super::Fuse::new(super::S3Backend::new(
             "http://172.21.20.134:9001",
