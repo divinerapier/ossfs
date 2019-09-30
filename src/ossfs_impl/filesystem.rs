@@ -23,6 +23,7 @@ where
     backend: B,
     nodes_tree: RoseTree<Node>,
     ino_mapper: HashMap<u64, NodeIndex<DefaultIx>>,
+    pool: threadpool::ThreadPool,
 }
 
 impl<B: Backend + std::fmt::Debug> FileSystem<B> {
@@ -35,6 +36,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             backend,
             ino_mapper,
             nodes_tree,
+            pool: threadpool::ThreadPool::new(32),
         }
     }
 
@@ -125,7 +127,13 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             .nodes_tree
             .children(index)
             .map(|node_index| {
-                log::info!("parent: {:?}, child: {:?}", index, node_index);
+                log::debug!(
+                    "{}:{} parent: {:?}, child: {:?}",
+                    std::file!(),
+                    std::line!(),
+                    index,
+                    node_index
+                );
                 self.nodes_tree.index(node_index).clone()
             })
             .collect();
@@ -156,8 +164,18 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             );
             return None;
         }
-        log::info!("tree: {:#?}", self.nodes_tree);
-        log::info!("mapper: {:#?}", self.ino_mapper);
+        log::trace!(
+            "{}:{} tree: {:#?}",
+            std::file!(),
+            std::line!(),
+            self.nodes_tree
+        );
+        log::trace!(
+            "{}:{} mapper: {:#?}",
+            std::file!(),
+            std::line!(),
+            self.ino_mapper
+        );
         self.readdir_local(parent_index)
     }
 
@@ -169,26 +187,6 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                 self.backend
                     .statfs(self.nodes_tree.index(*index).path.as_ref().unwrap())
             })
-        // None => {
-        //     println!("{}:{} ino: {} not found", std::file!(), std::line!(), ino);
-        //     return None;
-        // }
-        // Some(node_index) => {
-        //     return self
-        //         .backend
-        //         .statfs(self.nodes_tree.index(*node_index).path.as_ref().unwrap());
-        // }
-        // match self.ino_mapper.get(&ino) {
-        //     None => {
-        //         println!("{}:{} ino: {} not found", std::file!(), std::line!(), ino);
-        //         return None;
-        //     }
-        //     Some(node_index) => {
-        //         return self
-        //             .backend
-        //             .statfs(self.nodes_tree.index(*node_index).path.as_ref().unwrap());
-        //     }
-        // }
     }
 
     pub fn mknod(

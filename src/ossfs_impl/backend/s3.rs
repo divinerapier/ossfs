@@ -147,7 +147,7 @@ impl Backend for S3Backend {
                         prefix.prefix.is_some()
                     })
                     .filter(|prefix| -> bool {
-                        log::info!("{}:{} prefix: {:?}", std::file!(), std::line!(), prefix);
+                        log::debug!("{}:{} prefix: {:?}", std::file!(), std::line!(), prefix);
                         true
                     })
                     .map(|prefix| {

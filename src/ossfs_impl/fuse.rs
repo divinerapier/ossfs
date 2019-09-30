@@ -52,7 +52,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         match self.fs.lookup(parent, name) {
             Ok(Some(attr)) => {
-                log::info!(
+                log::trace!(
                     "{}:{}  parent: {}, name: {}, attr: {:?}",
                     std::file!(),
                     std::line!(),
@@ -63,24 +63,24 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                 reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
             }
             Ok(None) => {
-                // log::warn!(
-                //     "{}:{}  parent: {}, name: {}",
-                //     std::file!(),
-                //     std::line!(),
-                //     parent,
-                //     name.to_string_lossy(),
-                // );
+                log::debug!(
+                    "{}:{}  parent: {}, name: {}",
+                    std::file!(),
+                    std::line!(),
+                    parent,
+                    name.to_string_lossy(),
+                );
                 reply.error(ENOENT);
             }
             Err(e) => {
-                // log::error!(
-                //     "{}:{} parent: {}, name: {}, error: {}",
-                //     std::file!(),
-                //     std::line!(),
-                //     parent,
-                //     name.to_string_lossy(),
-                //     e
-                // );
+                log::error!(
+                    "{}:{} parent: {}, name: {}, error: {}",
+                    std::file!(),
+                    std::line!(),
+                    parent,
+                    name.to_string_lossy(),
+                    e
+                );
                 reply.error(ENOENT);
             }
         }
@@ -95,7 +95,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// inodes will receive a forget message.
 
     fn forget(&mut self, _req: &Request, _ino: u64, _nlookup: u64) {
-        log::info!(
+        log::trace!(
             "{}:{} ino: {}, nlookup: {}",
             std::file!(),
             std::line!(),
@@ -109,13 +109,13 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         match self.fs.getattr(ino) {
             Some(attr) => {
-                // log::info!(
-                //     "{}:{} ino: {}, attr: {:?}",
-                //     std::file!(),
-                //     std::line!(),
-                //     ino,
-                //     attr
-                // );
+                log::debug!(
+                    "{}:{} ino: {}, attr: {:?}",
+                    std::file!(),
+                    std::line!(),
+                    ino,
+                    attr
+                );
                 reply.attr(&std::time::Duration::from_secs(1), &attr);
             }
             None => {

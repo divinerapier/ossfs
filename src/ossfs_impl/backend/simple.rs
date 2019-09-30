@@ -14,13 +14,17 @@ use std::time::UNIX_EPOCH;
 
 #[derive(Debug)]
 pub struct SimpleBackend {
-    root: &'static str,
+    root: String,
     root_attr: FileAttr,
 }
 
 impl SimpleBackend {
-    pub fn new(root: &'static str) -> SimpleBackend {
-        let meta: std::fs::Metadata = std::fs::metadata(root).unwrap();
+    pub fn new<R>(root: R) -> SimpleBackend
+    where
+        R: Into<String>,
+    {
+        let root = root.into();
+        let meta: std::fs::Metadata = std::fs::metadata(&root).unwrap();
         SimpleBackend {
             root,
             root_attr: FileAttr {
@@ -69,23 +73,23 @@ impl super::Backend for SimpleBackend {
         Node {
             inode: Some(ROOT_INODE),
             parent: Some(ROOT_INODE),
-            path: Some(Path::new(self.root).to_path_buf()),
+            path: Some(Path::new(&self.root).to_path_buf()),
             attr: Some(self.root_attr),
         }
     }
 
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>> {
-        log::debug!("{}:{} path: {:?}", std::file!(), std::line!(), path,);
+        // log::debug!("{}:{} path: {:?}", std::file!(), std::line!(), path,);
 
         let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
             Ok(dir) => {
-                log::debug!(
-                    "{}:{} path: {:?}, dir: {:?}",
-                    std::file!(),
-                    std::line!(),
-                    path,
-                    dir
-                );
+                // log::debug!(
+                //     "{}:{} path: {:?}, dir: {:?}",
+                //     std::file!(),
+                //     std::line!(),
+                //     path,
+                //     dir
+                // );
                 dir
             }
             Err(e) => return Err(Error::Naive(format!("{}", e))),
@@ -96,13 +100,13 @@ impl super::Backend for SimpleBackend {
             .map(|entry| {
                 let entry: std::fs::DirEntry = entry.unwrap();
                 let meta: std::fs::Metadata = entry.metadata().unwrap();
-                log::debug!(
-                    "{}:{} path: {:?}, sub path: {:?}",
-                    std::file!(),
-                    std::line!(),
-                    path,
-                    entry.path()
-                );
+                // log::debug!(
+                //     "{}:{} path: {:?}, sub path: {:?}",
+                //     std::file!(),
+                //     std::line!(),
+                //     path,
+                //     entry.path()
+                // );
                 Node {
                     inode: None,
                     parent: None,
@@ -154,7 +158,7 @@ impl super::Backend for SimpleBackend {
     }
 
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Stat> {
-        log::debug!("{}:{} path: {:?}", std::file!(), std::line!(), path);
+        // log::debug!("{}:{} path: {:?}", std::file!(), std::line!(), path);
         nix::sys::statfs::statfs(path.as_ref())
             .map(|stat| -> Stat {
                 #[cfg(not(any(target_os = "ios", target_os = "macos",)))]
@@ -236,7 +240,7 @@ impl super::Backend for SimpleBackend {
             .create(false)
             .create_new(false)
             .open(path.as_ref())?;
-        log::info!(
+        log::trace!(
             "{}:{} path: {:?} offset: {} size: {}",
             std::file!(),
             std::line!(),
