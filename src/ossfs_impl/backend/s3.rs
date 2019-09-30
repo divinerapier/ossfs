@@ -229,6 +229,10 @@ impl Backend for S3Backend {
         Ok(nodes1)
     }
 
+    fn get_child<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node> {
+        unimplemented!()
+    }
+
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Stat> {
         let key = path
             .as_ref()

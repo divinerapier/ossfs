@@ -44,40 +44,64 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.ino_mapper.len() as u64 + 1
     }
 
-    pub fn lookup(&self, ino: u64, name: &OsStr) -> Result<Option<FileAttr>> {
-        match self.ino_mapper.get(&ino) {
-            Some(parent_index) => {
-                for child_index in self.nodes_tree.children(*parent_index) {
-                    let child: &Node = self.nodes_tree.index(child_index);
-                    let path = child.path.as_ref().unwrap();
-                    if path.ends_with(name) && path.file_name().unwrap().eq(name) {
-                        assert_eq!(
-                            child.attr.as_ref().unwrap().ino,
-                            *child.inode.as_ref().unwrap()
-                        );
-                        return Ok(child.attr);
-                    }
-                }
-                // log::warn!(
-                //     "{}:{} parent: {}, name: {:?} not found",
-                //     std::file!(),
-                //     std::line!(),
-                //     ino,
-                //     name
-                // );
-                Ok(None)
-            }
-            None => {
-                log::error!(
-                    "{}:{} parent ino: {} name: {:?} not found",
-                    std::file!(),
-                    std::line!(),
-                    ino,
-                    name,
-                );
-                Err(Error::Naive(format!("parent not found")))
-            }
-        }
+    // pub fn lookup(&self, ino: u64, name: &OsStr) -> Result<Option<FileAttr>> {
+    //     match self.ino_mapper.get(&ino) {
+    //         Some(parent_index) => {
+    //             for child_index in self.nodes_tree.children(*parent_index) {
+    //                 let child: &Node = self.nodes_tree.index(child_index);
+    //                 let path = child.path.as_ref().unwrap();
+    //                 if path.ends_with(name) && path.file_name().unwrap().eq(name) {
+    //                     assert_eq!(
+    //                         child.attr.as_ref().unwrap().ino,
+    //                         *child.inode.as_ref().unwrap()
+    //                     );
+    //                     return Ok(child.attr);
+    //                 }
+    //             }
+    //             // log::warn!(
+    //             //     "{}:{} parent: {}, name: {:?} not found",
+    //             //     std::file!(),
+    //             //     std::line!(),
+    //             //     ino,
+    //             //     name
+    //             // );
+    //             Ok(None)
+    //         }
+    //         None => {
+    //             log::error!(
+    //                 "{}:{} parent ino: {} name: {:?} not found",
+    //                 std::file!(),
+    //                 std::line!(),
+    //                 ino,
+    //                 name,
+    //             );
+    //             Err(Error::Naive(format!("parent not found")))
+    //         }
+    //     }
+    // }
+
+    pub fn lookup(&mut self, ino: u64, name: &OsStr) -> Result<Option<FileAttr>> {
+        let parent_index = *self.ino_mapper.get(&ino).ok_or_else(|| {
+            log::error!(
+                "{}:{} parent ino: {} name: {:?} not found",
+                std::file!(),
+                std::line!(),
+                ino,
+                name,
+            );
+            Error::Naive(format!("parent not found"))
+        })?;
+        self.nodes_tree
+            .children(parent_index)
+            .map(|child_index| self.nodes_tree.index(child_index))
+            .find(|child| {
+                let child: &Node = child;
+                let path = child.path.as_ref().unwrap();
+                path.ends_with(name) && path.file_name().unwrap().eq(name)
+            })
+            .map(|node| node.attr)
+            .or_else(|| Some(self.fetch_child_by_name(parent_index, name).ok()?.attr))
+            .ok_or_else(|| Error::Naive(format!("not found. parent: {}, ino: {:?}", ino, name)))
     }
 
     pub fn getattr(&self, ino: u64) -> Option<FileAttr> {
@@ -96,6 +120,33 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
     pub fn add_node_locally(&mut self, parent_index: NodeIndex<u32>, child_node: Node) {
         let child_index = self.nodes_tree.add_child(parent_index, child_node);
         self.ino_mapper.insert(self.next_inode(), child_index);
+    }
+
+    pub fn fetch_child_by_name(
+        &mut self,
+        parent_index: NodeIndex<u32>,
+        name: &OsStr,
+    ) -> Result<Node> {
+        let parent_node: &Node = self.nodes_tree.index(parent_index);
+        let parent_inode = parent_node.inode.clone();
+        parent_node
+            .path
+            .as_ref()
+            .map(|path| self.backend.get_child(path.join(name)))
+            .transpose()?
+            .map(|mut child_node| {
+                let inode = self.next_inode();
+                child_node.inode = Some(inode);
+                child_node.parent = parent_inode.clone();
+                child_node.attr.as_mut().unwrap().ino = inode;
+                let node = child_node.clone();
+                self.add_node_locally(parent_index, child_node);
+                node
+            })
+            .ok_or(Error::Naive(format!(
+                "get children from backend. {:?}",
+                parent_index
+            )))
     }
 
     pub fn fetch_children(&mut self, index: NodeIndex<u32>) -> Result<()> {
