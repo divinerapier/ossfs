@@ -10,16 +10,16 @@ mod test {
     fn test_api_parameters() {
         env_logger::from_env(env_logger::Env::default().default_filter_or("trace")).init();
         log::set_max_level(log::LevelFilter::max());
-        std::fs::create_dir_all("./tmp");
+        // std::fs::create_dir_all("./tmp");
         // std::fs::create_dir_all("./mnt");
-        // let fs = super::fs::Fuse::new(super::fs::SimpleBackend::new("./tmp"));
-        let fs = super::Fuse::new(super::S3Backend::new(
-            "http://172.21.20.134:9001",
-            "5577006791947779410",
-            "admin",
-            "password",
-        ));
-        let mountpoint = "./mnt";
+        let fs = super::Fuse::new(super::SimpleBackend::new("/data/sihao/tmp"));
+        // let fs = super::Fuse::new(super::S3Backend::new(
+        //     "http://172.21.20.134:9001",
+        //     "5577006791947779410",
+        //     "admin",
+        //     "password",
+        // ));
+        let mountpoint = "/data/sihao/mnt";
         let options = ["-o", "rw", "-o", "fsname=cachefs"]
             .iter()
             .map(|o| o.as_ref())

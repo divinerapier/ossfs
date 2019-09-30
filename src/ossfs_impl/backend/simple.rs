@@ -4,6 +4,8 @@ use crate::ossfs_impl::node::Node;
 use crate::ossfs_impl::stat::Stat;
 use fuse::{FileAttr, FileType};
 use std::fmt::Debug;
+use std::io::Read;
+use std::io::Seek;
 use std::ops::Add;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -223,5 +225,28 @@ impl super::Backend for SimpleBackend {
                 mode
             ),
         })
+    }
+
+    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> Result<Vec<u8>> {
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(false)
+            .append(false)
+            .truncate(false)
+            .create(false)
+            .create_new(false)
+            .open(path.as_ref())?;
+        log::info!(
+            "{}:{} path: {:?} offset: {} size: {}",
+            std::file!(),
+            std::line!(),
+            path.as_ref(),
+            offset,
+            size,
+        );
+        file.seek(std::io::SeekFrom::Start(offset))?;
+        let mut buffer: Vec<u8> = vec![0; size];
+        file.read_exact(&mut buffer)?;
+        Ok(buffer)
     }
 }

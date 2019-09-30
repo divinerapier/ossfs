@@ -273,4 +273,29 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.add_node_locally(parent_index, node.clone());
         Some(node)
     }
+
+    pub fn read(&self, ino: u64, _fh: u64, offset: i64, size: u32) -> Result<Vec<u8>> {
+        let index = self.ino_mapper.get(&ino).unwrap();
+        let node: &Node = self.nodes_tree.index(*index);
+        let attr: &FileAttr = node.attr.as_ref().unwrap();
+        if attr.size < offset as u64 {
+            log::error!(
+                "input offset: {} size: {}, file size: {}",
+                offset,
+                size,
+                attr.size
+            );
+            return Err(Error::Naive(format!(
+                "input offset: {} size: {}, file size: {}",
+                offset, size, attr.size
+            )));
+        }
+        let size = if attr.size < offset as u64 + size as u64 {
+            attr.size - offset as u64
+        } else {
+            size as u64
+        };
+        self.backend
+            .read(node.path.as_ref().unwrap(), offset as u64, size as usize)
+    }
 }

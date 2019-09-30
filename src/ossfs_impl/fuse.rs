@@ -404,7 +404,25 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             _offset,
             _size,
         );
-        reply.error(ENOSYS);
+
+        match self.fs.read(_ino, _fh, _offset, _size) {
+            Ok(data) => {
+                reply.data(&data);
+            }
+            Err(err) => {
+                log::error!(
+                    "{}:{} ino: {}, fh: {}, offset: {}, size: {}, error: {}",
+                    std::file!(),
+                    std::line!(),
+                    _ino,
+                    _fh,
+                    _offset,
+                    _size,
+                    err
+                );
+                reply.error(ENOSYS);
+            }
+        }
     }
 
     /// Write data.
