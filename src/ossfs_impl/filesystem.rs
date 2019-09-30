@@ -9,6 +9,7 @@ use rose_tree::RoseTree;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ops::Index;
+use std::sync::mpsc::{channel, Receiver};
 use std::time::SystemTime;
 
 pub type Inode = u64;
@@ -31,7 +32,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let root: Node = backend.root();
         let mut ino_mapper = HashMap::new();
         let (nodes_tree, root_index) = RoseTree::<Node, u32>::new(root.clone());
-        ino_mapper.insert(root.inode.unwrap(), root_index);
+        ino_mapper.insert(root.inode(), root_index);
         FileSystem {
             backend,
             ino_mapper,
@@ -44,43 +45,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         self.ino_mapper.len() as u64 + 1
     }
 
-    // pub fn lookup(&self, ino: u64, name: &OsStr) -> Result<Option<FileAttr>> {
-    //     match self.ino_mapper.get(&ino) {
-    //         Some(parent_index) => {
-    //             for child_index in self.nodes_tree.children(*parent_index) {
-    //                 let child: &Node = self.nodes_tree.index(child_index);
-    //                 let path = child.path.as_ref().unwrap();
-    //                 if path.ends_with(name) && path.file_name().unwrap().eq(name) {
-    //                     assert_eq!(
-    //                         child.attr.as_ref().unwrap().ino,
-    //                         *child.inode.as_ref().unwrap()
-    //                     );
-    //                     return Ok(child.attr);
-    //                 }
-    //             }
-    //             // log::warn!(
-    //             //     "{}:{} parent: {}, name: {:?} not found",
-    //             //     std::file!(),
-    //             //     std::line!(),
-    //             //     ino,
-    //             //     name
-    //             // );
-    //             Ok(None)
-    //         }
-    //         None => {
-    //             log::error!(
-    //                 "{}:{} parent ino: {} name: {:?} not found",
-    //                 std::file!(),
-    //                 std::line!(),
-    //                 ino,
-    //                 name,
-    //             );
-    //             Err(Error::Naive(format!("parent not found")))
-    //         }
-    //     }
-    // }
-
-    pub fn lookup(&mut self, ino: u64, name: &OsStr) -> Result<Option<FileAttr>> {
+    pub fn lookup(&mut self, ino: u64, name: &OsStr) -> Result<FileAttr> {
         let parent_index = *self.ino_mapper.get(&ino).ok_or_else(|| {
             log::error!(
                 "{}:{} parent ino: {} name: {:?} not found",
@@ -96,25 +61,24 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             .map(|child_index| self.nodes_tree.index(child_index))
             .find(|child| {
                 let child: &Node = child;
-                let path = child.path.as_ref().unwrap();
+                let path = &child.path();
                 path.ends_with(name) && path.file_name().unwrap().eq(name)
             })
-            .map(|node| node.attr)
-            .or_else(|| Some(self.fetch_child_by_name(parent_index, name).ok()?.attr))
+            .map(|node| node.attr().clone())
+            .or_else(|| {
+                Some(
+                    self.fetch_child_by_name(parent_index, name)
+                        .ok()?
+                        .attr()
+                        .clone(),
+                )
+            })
             .ok_or_else(|| Error::Naive(format!("not found. parent: {}, ino: {:?}", ino, name)))
     }
 
     pub fn getattr(&self, ino: u64) -> Option<FileAttr> {
         let index = self.ino_mapper.get(&ino)?;
-        self.nodes_tree.index(*index).attr
-    }
-
-    pub fn getnode(&self, ino: u64) -> Option<Node> {
-        if ino == ROOT_INODE {
-            return Some(self.backend.root());
-        }
-        let index = self.ino_mapper.get(&ino)?;
-        Some(self.nodes_tree.index(*index).clone())
+        Some(self.nodes_tree.index(*index).attr().clone())
     }
 
     pub fn add_node_locally(&mut self, parent_index: NodeIndex<u32>, child_node: Node) {
@@ -128,56 +92,53 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         name: &OsStr,
     ) -> Result<Node> {
         let parent_node: &Node = self.nodes_tree.index(parent_index);
-        let parent_inode = parent_node.inode.clone();
-        parent_node
-            .path
-            .as_ref()
-            .map(|path| self.backend.get_child(path.join(name)))
-            .transpose()?
-            .map(|mut child_node| {
-                let inode = self.next_inode();
-                child_node.inode = Some(inode);
-                child_node.parent = parent_inode.clone();
-                child_node.attr.as_mut().unwrap().ino = inode;
-                let node = child_node.clone();
-                self.add_node_locally(parent_index, child_node);
-                node
-            })
-            .ok_or(Error::Naive(format!(
-                "get children from backend. {:?}",
-                parent_index
-            )))
+        let parent_inode = parent_node.inode();
+        let child_node = self.backend.get_child(parent_node.path().join(name))?;
+        let inode = self.next_inode();
+        child_node.set_inode(inode, parent_inode);
+        let node = child_node.clone();
+        self.add_node_locally(parent_index, child_node);
+        Ok(node)
     }
 
     pub fn fetch_children(&mut self, index: NodeIndex<u32>) -> Result<()> {
         let parent_node: &Node = self.nodes_tree.index(index);
-        let parent_inode = parent_node.inode.clone();
-        parent_node
-            .path
-            .as_ref()
-            .map(|path| self.backend.get_children(path))
-            .ok_or(Error::Naive(format!(
-                "get children from backend. {:?}",
-                index
-            )))
+        let parent_inode = parent_node.inode();
+
+        self.backend
+            .get_children(parent_node.path())
             .map(|children| {
-                let children: Vec<Node> = children.unwrap();
-                for mut child in children {
+                let children: Vec<Node> = children;
+                for child in children {
                     let inode = self.next_inode();
-                    child.inode = Some(inode);
-                    child.parent = parent_inode.clone();
-                    child.attr.as_mut().unwrap().ino = inode;
+                    child.set_inode(inode, parent_inode);
                     self.add_node_locally(index, child);
                 }
                 ()
             })
+            .map_err(|err| Error::Naive(format!("get children from backend. {:?}", index)))
     }
 
-    pub fn readdir_local(&self, index: NodeIndex<u32>) -> Option<Vec<Node>> {
-        let children: Vec<Node> = self
-            .nodes_tree
-            .children(index)
-            .map(|node_index| {
+    pub fn readdir_local(&self, index: NodeIndex<u32>) -> Option<Receiver<Node>> {
+        let nodes_tree = self.nodes_tree.clone();
+        let exists = {
+            let mut exists = false;
+            for _child_index in nodes_tree.children(index) {
+                exists = true;
+                break;
+            }
+            exists
+        };
+
+        if !exists {
+            return None;
+        }
+
+        let (tx, rx) = channel::<Node>();
+
+        self.pool.execute(move || {
+            let children = nodes_tree.children(index);
+            for node_index in children {
                 log::debug!(
                     "{}:{} parent: {:?}, child: {:?}",
                     std::file!(),
@@ -185,17 +146,14 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
                     index,
                     node_index
                 );
-                self.nodes_tree.index(node_index).clone()
-            })
-            .collect();
-        if children.len() == 0 {
-            None
-        } else {
-            Some(children)
-        }
+                tx.send(nodes_tree.index(node_index).clone());
+            }
+        });
+
+        Some(rx)
     }
 
-    pub fn readdir(&mut self, parent_ino: u64, file_handle: u64) -> Option<Vec<Node>> {
+    pub fn readdir(&mut self, parent_ino: u64, file_handle: u64) -> Option<Receiver<Node>> {
         // read from local node tree
         let parent_index = match self.ino_mapper.get(&parent_ino) {
             Some(parent_index) => *parent_index,
@@ -235,8 +193,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             .get(&ino)
             .ok_or(Error::Naive(format!("ino not found. {}", ino)))
             .and_then(|index| -> Result<Stat> {
-                self.backend
-                    .statfs(self.nodes_tree.index(*index).path.as_ref().unwrap())
+                self.backend.statfs(&self.nodes_tree.index(*index).path())
             })
     }
 
@@ -270,7 +227,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         let mut walker = self.nodes_tree.walk_children(parent_index);
         while let Some(child_node_index) = walker.next(&self.nodes_tree) {
             let child_node: &Node = self.nodes_tree.index(child_node_index);
-            if child_node.path.as_ref().unwrap().file_name().unwrap() == name {
+            if child_node.path().file_name().unwrap() == name {
                 log::warn!(
                     "{}:{} parent: {}, name: {:?} exists",
                     std::file!(),
@@ -282,7 +239,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
             }
         }
         let parent_node = self.nodes_tree.index(parent_index);
-        let parent_path = parent_node.path.as_ref().unwrap();
+        let parent_path = parent_node.path();
         let child_path = parent_path.join(name);
         self.backend.mknod(&child_path, filetype, mode);
         let next_inode = self.next_inode();
@@ -326,7 +283,7 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
     pub fn read(&self, ino: u64, _fh: u64, offset: i64, size: u32) -> Result<Vec<u8>> {
         let index = self.ino_mapper.get(&ino).unwrap();
         let node: &Node = self.nodes_tree.index(*index);
-        let attr: &FileAttr = node.attr.as_ref().unwrap();
+        let attr: &FileAttr = &node.attr();
         if attr.size < offset as u64 {
             log::error!(
                 "input offset: {} size: {}, file size: {}",
@@ -344,7 +301,6 @@ impl<B: Backend + std::fmt::Debug> FileSystem<B> {
         } else {
             size as u64
         };
-        self.backend
-            .read(node.path.as_ref().unwrap(), offset as u64, size as usize)
+        self.backend.read(node.path(), offset as u64, size as usize)
     }
 }

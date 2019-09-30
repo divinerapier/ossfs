@@ -51,7 +51,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
 
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
         match self.fs.lookup(parent, name) {
-            Ok(Some(attr)) => {
+            Ok(attr) => {
                 log::trace!(
                     "{}:{}  parent: {}, name: {}, attr: {:?}",
                     std::file!(),
@@ -61,16 +61,6 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                     attr
                 );
                 reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
-            }
-            Ok(None) => {
-                log::debug!(
-                    "{}:{}  parent: {}, name: {}",
-                    std::file!(),
-                    std::line!(),
-                    parent,
-                    name.to_string_lossy(),
-                );
-                reply.error(ENOENT);
             }
             Err(e) => {
                 log::error!(
@@ -209,7 +199,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             req.gid(),
         ) {
             Some(node) => {
-                reply.entry(&std::time::Duration::from_secs(1), &node.attr.unwrap(), 0);
+                reply.entry(&std::time::Duration::from_secs(1), &node.attr(), 0);
             }
             None => {
                 log::error!(
@@ -247,7 +237,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
             req.gid(),
         ) {
             Some(node) => {
-                reply.entry(&std::time::Duration::from_secs(1), &node.attr.unwrap(), 0);
+                reply.entry(&std::time::Duration::from_secs(1), &node.attr(), 0);
             }
             None => {
                 log::error!(
@@ -567,12 +557,12 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         match self.fs.readdir(ino, fh) {
             Some(children) => {
                 for child in children.iter().skip(offset as usize) {
-                    let child: &Node = child;
+                    let child: Node = child;
                     if reply.add(
-                        child.inode.unwrap(),
+                        child.inode(),
                         curr_offset,
-                        child.attr.as_ref().unwrap().kind,
-                        child.path.as_ref().unwrap().file_name().unwrap(),
+                        child.attr().kind,
+                        child.path().file_name().unwrap(),
                     ) {
                         break;
                     } else {

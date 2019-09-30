@@ -70,12 +70,18 @@ impl SimpleBackend {
 
 impl super::Backend for SimpleBackend {
     fn root(&self) -> Node {
-        Node {
-            inode: Some(ROOT_INODE),
-            parent: Some(ROOT_INODE),
-            path: Some(Path::new(&self.root).to_path_buf()),
-            attr: Some(self.root_attr),
-        }
+        Node::new(
+            ROOT_INODE,
+            ROOT_INODE,
+            Path::new(&self.root).to_path_buf(),
+            self.root_attr,
+        )
+        // Node {
+        //     inode: Some(ROOT_INODE),
+        //     parent: Some(ROOT_INODE),
+        //     path: Some(Path::new(&self.root).to_path_buf()),
+        //     attr: Some(self.root_attr),
+        // }
     }
 
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>> {
@@ -107,11 +113,11 @@ impl super::Backend for SimpleBackend {
                 //     path,
                 //     entry.path()
                 // );
-                Node {
-                    inode: None,
-                    parent: None,
-                    path: Some(PathBuf::from(entry.path())),
-                    attr: Some(FileAttr {
+                Node::new(
+                    0,
+                    0,
+                    PathBuf::from(entry.path()),
+                    FileAttr {
                         ino: 0,
                         /// Size in bytes
                         size: meta.size(),
@@ -151,8 +157,8 @@ impl super::Backend for SimpleBackend {
                         rdev: meta.rdev() as u32,
                         /// Flags (macOS only, see chflags(2))
                         flags: 0,
-                    }),
-                }
+                    },
+                )
             })
             .collect::<Vec<Node>>())
     }
@@ -166,11 +172,11 @@ impl super::Backend for SimpleBackend {
         //     path,
         //     entry.path()
         // );
-        Ok(Node {
-            inode: None,
-            parent: None,
-            path: Some(path.as_ref().to_path_buf()),
-            attr: Some(FileAttr {
+        Ok(Node::new(
+            0,
+            0,
+            path.as_ref().to_path_buf(),
+            FileAttr {
                 ino: 0,
                 /// Size in bytes
                 size: meta.size(),
@@ -210,8 +216,8 @@ impl super::Backend for SimpleBackend {
                 rdev: meta.rdev() as u32,
                 /// Flags (macOS only, see chflags(2))
                 flags: 0,
-            }),
-        })
+            },
+        ))
     }
 
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Stat> {

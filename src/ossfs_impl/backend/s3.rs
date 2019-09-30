@@ -3,13 +3,12 @@ use crate::ossfs_impl::backend::Backend;
 use crate::ossfs_impl::node::Node;
 use crate::ossfs_impl::stat::Stat;
 use fuse::{FileAttr, FileType};
-use rusoto_core::credential::ChainProvider;
 use rusoto_core::credential::StaticProvider;
 use rusoto_core::request::HttpClient;
 use rusoto_core::Region;
 use rusoto_s3::{
-    CommonPrefix, HeadBucketRequest, HeadObjectOutput, HeadObjectRequest, ListObjectsV2Output,
-    ListObjectsV2Request, Object, S3Client, S3,
+    CommonPrefix, HeadBucketRequest, HeadObjectRequest, ListObjectsV2Output, ListObjectsV2Request,
+    Object, S3Client, S3,
 };
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
@@ -72,11 +71,11 @@ impl Backend for S3Backend {
         match resp_result {
             Ok(_) => {
                 log::debug!("uid: {}, gid: {}", self.uid, self.gid);
-                Node {
-                    inode: Some(ROOT_INODE),
-                    parent: Some(ROOT_INODE),
-                    path: Some(PathBuf::from("")),
-                    attr: Some(FileAttr {
+                Node::new(
+                    ROOT_INODE,
+                    ROOT_INODE,
+                    PathBuf::from(""),
+                    FileAttr {
                         ino: ROOT_INODE,
                         /// Size in bytes
                         size: 4096,
@@ -104,8 +103,8 @@ impl Backend for S3Backend {
                         rdev: 0,
                         /// Flags (macOS only, see chflags(2))
                         flags: 0,
-                    }),
-                }
+                    },
+                )
             }
             Err(e) => {
                 panic!(format!("failed to root node. error: {}", e));
@@ -159,11 +158,11 @@ impl Backend for S3Backend {
                             path,
                             prefix
                         );
-                        Node {
-                            inode: None,
-                            parent: None,
-                            path: Some(Path::new(&prefix.prefix.clone().unwrap()).to_path_buf()),
-                            attr: Some(FileAttr {
+                        Node::new(
+                            0,
+                            0,
+                            Path::new(&prefix.prefix.clone().unwrap()).to_path_buf(),
+                            FileAttr {
                                 ino: 0,
                                 size: 4096,
                                 blocks: 0,
@@ -178,8 +177,8 @@ impl Backend for S3Backend {
                                 gid: self.gid,
                                 rdev: 0,
                                 flags: 0,
-                            }),
-                        }
+                            },
+                        )
                     })
                     .collect();
                 nodes
@@ -197,11 +196,11 @@ impl Backend for S3Backend {
                     })
                     .map(|object| {
                         let object: &Object = object;
-                        Node {
-                            inode: None,
-                            parent: None,
-                            path: Some(Path::new(&object.key.clone().unwrap()).to_path_buf()),
-                            attr: Some(FileAttr {
+                        Node::new(
+                            0,
+                            0,
+                            Path::new(&object.key.clone().unwrap()).to_path_buf(),
+                            FileAttr {
                                 ino: 0,
                                 size: object.size.unwrap() as u64,
                                 blocks: 0,
@@ -216,8 +215,8 @@ impl Backend for S3Backend {
                                 gid: 0,
                                 rdev: 0,
                                 flags: 0,
-                            }),
-                        }
+                            },
+                        )
                     })
                     .collect();
                 nodes
