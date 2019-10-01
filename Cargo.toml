@@ -17,7 +17,7 @@ rose_tree = {git = "https://github.com/divinerapier/rose_tree-rs", tag = "0.2.0"
 rusoto_s3 = "0.40.0"
 rusoto_core = "0.40.0"
 threadpool = "1.7.1"
-
+id_tree = "1.7.0"
 
 [[bin]]
 name = "example"

@@ -554,9 +554,9 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
         mut reply: ReplyDirectory,
     ) {
         let mut curr_offset = offset + 1;
-        match self.fs.readdir(ino, fh) {
+        match self.fs.readdir(ino, fh, offset as usize) {
             Some(children) => {
-                for child in children.iter().skip(offset as usize) {
+                for child in children {
                     let child: Node = child;
                     if reply.add(
                         child.inode(),
