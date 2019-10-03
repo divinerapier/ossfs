@@ -13,12 +13,26 @@ time = "0.1.42"
 log = "0.4.8"
 env_logger = "0.6.2"
 nix = "0.15.0"
-rose_tree = {git = "https://github.com/divinerapier/rose_tree-rs", tag = "0.2.0"}
 rusoto_s3 = "0.40.0"
 rusoto_core = "0.40.0"
 threadpool = "1.7.1"
 id_tree = "1.7.0"
+walkdir = "2.2.9"
+clap = "2.33.0"
+
+# examples and tests
+[dev-dependencies]
+walkdir = "2.2.9"
+clap = "2.33.0"
 
 [[bin]]
-name = "example"
-path = "example/main.rs"
+name = "simple-server"
+path = "examples/simple-server/main.rs"
+
+[[bin]]
+name = "listreadfiles"
+path = "benches/listreadfiles/main.rs"
+
+[[bin]]
+name = "readfiles"
+path = "benches/readfiles/main.rs"

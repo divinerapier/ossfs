@@ -7,33 +7,38 @@ use libc::{c_int, ENOENT, ENOSYS, ENOTDIR};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use std::time::SystemTime;
 
 #[derive(Debug)]
 pub struct Fuse<B>
 where
-    B: Backend + std::fmt::Debug,
+    B: Backend + std::fmt::Debug + Send + Sync + 'static,
 {
-    fs: FileSystem<B>,
+    fs: Arc<FileSystem<B>>,
     path_cache: HashMap<String, usize>,
     next_handle: AtomicU64,
     handle_reference: HashMap<u64, u64>,
+    pool: threadpool::ThreadPool,
 }
 
-impl<B: Backend + std::fmt::Debug> Fuse<B> {
+impl<B: Backend + std::fmt::Debug + Send + Sync + 'static> Fuse<B> {
     pub fn new(backend: B) -> Fuse<B> {
         Fuse {
-            fs: FileSystem::new(backend),
+            fs: Arc::new(FileSystem::new(backend)),
             // inode_cache: HashMap::new(),
             path_cache: HashMap::new(),
             next_handle: AtomicU64::new(2),
             handle_reference: HashMap::new(),
+            pool: threadpool::ThreadPool::new(32),
         }
     }
 }
 
-impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
+impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
     /// Initialize filesystem.
     /// Called before any other filesystem method.
     fn init(&mut self, _req: &Request) -> Result<(), c_int> {
@@ -376,43 +381,38 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// operation. fh will contain the value set by the open method, or will be undefined
     /// if the open method didn't set any value.
 
-    fn read(
-        &mut self,
-        _req: &Request,
-        _ino: u64,
-        _fh: u64,
-        _offset: i64,
-        _size: u32,
-        reply: ReplyData,
-    ) {
+    fn read(&mut self, req: &Request, ino: u64, fh: u64, offset: i64, size: u32, reply: ReplyData) {
         log::debug!(
             "{}:{}, ino: {}, fh: {}, offset: {}, size: {}",
             std::file!(),
             std::line!(),
-            _ino,
-            _fh,
-            _offset,
-            _size,
+            ino,
+            fh,
+            offset,
+            size,
         );
 
-        match self.fs.read(_ino, _fh, _offset, _size) {
-            Ok(data) => {
-                reply.data(&data);
-            }
-            Err(err) => {
-                log::error!(
-                    "{}:{} ino: {}, fh: {}, offset: {}, size: {}, error: {}",
-                    std::file!(),
-                    std::line!(),
-                    _ino,
-                    _fh,
-                    _offset,
-                    _size,
-                    err
-                );
-                reply.error(ENOSYS);
-            }
-        }
+        let fs = self.fs.clone();
+        self.pool.execute(move || {
+            fs.read(ino, fh, offset, size, |result| match result {
+                Ok(data) => {
+                    reply.data(&data);
+                }
+                Err(err) => {
+                    log::error!(
+                        "{}:{} ino: {}, fh: {}, offset: {}, size: {}, error: {}",
+                        std::file!(),
+                        std::line!(),
+                        ino,
+                        fh,
+                        offset,
+                        size,
+                        err
+                    );
+                    reply.error(ENOSYS);
+                }
+            });
+        });
     }
 
     /// Write data.
@@ -524,13 +524,13 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     /// between opendir and releasedir.
 
     fn opendir(&mut self, _req: &Request, _ino: u64, _flags: u32, reply: ReplyOpen) {
-        log::info!(
-            "{}:{} ino: {}, flags: {}",
-            std::file!(),
-            std::line!(),
-            _ino,
-            _flags
-        );
+        // log::info!(
+        //     "{}:{} ino: {}, flags: {}",
+        //     std::file!(),
+        //     std::line!(),
+        //     _ino,
+        //     _flags
+        // );
 
         if _ino == 0 {
             panic!("open dir ino: 0");
@@ -555,7 +555,7 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
     ) {
         let mut curr_offset = offset + 1;
         match self.fs.readdir(ino, fh, offset as usize) {
-            Some(children) => {
+            Ok(children) => {
                 for child in children {
                     let child: Node = child;
                     if reply.add(
@@ -564,21 +564,28 @@ impl<B: Backend + std::fmt::Debug> Filesystem for Fuse<B> {
                         child.attr().kind,
                         child.path().file_name().unwrap(),
                     ) {
+                        log::trace!(
+                            "current offset: {}, next offset: {}",
+                            curr_offset,
+                            curr_offset + 1
+                        );
                         break;
                     } else {
+                        // break;
                         curr_offset += 1;
                     }
                 }
                 reply.ok();
             }
-            None => {
+            Err(e) => {
                 log::error!(
-                    "{}:{}, _ino: {}, _fh: {}, _offset: {}",
+                    "{}:{}, _ino: {}, _fh: {}, _offset: {}, error: {}",
                     std::file!(),
                     std::line!(),
                     ino,
                     fh,
                     offset,
+                    e
                 );
                 reply.error(ENOTDIR);
             }
