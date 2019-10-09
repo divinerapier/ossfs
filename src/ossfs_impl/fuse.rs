@@ -9,9 +9,30 @@ use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Arc,
+    Arc, RwLock,
 };
 use std::time::SystemTime;
+
+#[derive(Debug)]
+pub struct FileHandle {
+    handle: u64,
+    content: Arc<Vec<u8>>,
+}
+
+#[derive(Debug)]
+pub struct HandleGroup {
+    map: HashMap<u64, Vec<FileHandle>>,
+    total_length: u64,
+}
+
+impl HandleGroup {
+    fn new() -> HandleGroup {
+        HandleGroup {
+            map: HashMap::new(),
+            total_length: 0,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct Fuse<B>
@@ -23,6 +44,8 @@ where
     next_handle: AtomicU64,
     handle_reference: HashMap<u64, u64>,
     pool: threadpool::ThreadPool,
+
+    handle_group: Arc<RwLock<HandleGroup>>,
 }
 
 impl<B: Backend + std::fmt::Debug + Send + Sync + 'static> Fuse<B> {
@@ -34,6 +57,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync + 'static> Fuse<B> {
             next_handle: AtomicU64::new(2),
             handle_reference: HashMap::new(),
             pool: threadpool::ThreadPool::new(32),
+            handle_group: Arc::new(RwLock::new(HandleGroup::new())),
         }
     }
 }
@@ -414,6 +438,95 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
             });
         });
     }
+
+    // fn read(&mut self, req: &Request, ino: u64, fh: u64, offset: i64, size: u32, reply: ReplyData) {
+    //     log::debug!(
+    //         "{}:{}, ino: {}, fh: {}, offset: {}, size: {}",
+    //         std::file!(),
+    //         std::line!(),
+    //         ino,
+    //         fh,
+    //         offset,
+    //         size,
+    //     );
+    //     // try read from cache
+    //     {
+    //         let handle_group = self.handle_group.read().unwrap();
+    //         if let Some(group) = handle_group.map.get(&ino) {
+    //             for elem in group {
+    //                 if elem.handle == fh {
+    //                     log::info!(
+    //                         "read from cache. ino: {}, fh: {}, length: {}",
+    //                         ino,
+    //                         fh,
+    //                         elem.content.len()
+    //                     );
+    //                     reply.data(&elem.content);
+    //                     return;
+    //                 }
+    //             }
+    //             drop(handle_group);
+    //             let handle_group = self.handle_group.clone();
+    //             let mut handle_group = handle_group.write().unwrap();
+    //             if let Some(group) = handle_group.map.get_mut(&ino) {
+    //                 if group.len() != 0 {
+    //                     let old_elem: &FileHandle = &(group[0]);
+    //                     let new_elem = FileHandle {
+    //                         content: old_elem.content.clone(),
+    //                         handle: fh,
+    //                     };
+    //                     log::info!(
+    //                         "add new cache. ino: {}, fh: {}, length: {}",
+    //                         ino,
+    //                         fh,
+    //                         new_elem.content.len()
+    //                     );
+    //                     reply.data(&new_elem.content);
+    //                     group.push(new_elem);
+    //                     return;
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     let fs = self.fs.clone();
+    //     let handle_group = self.handle_group.clone();
+    //     self.pool.execute(move || {
+    //         fs.read(ino, fh, offset, size, |result| match result {
+    //             Ok(data) => {
+    //                 log::info!(
+    //                     "read from backend. ino: {}, fh: {}, length: {}",
+    //                     ino,
+    //                     fh,
+    //                     data.len()
+    //                 );
+    //                 reply.data(&data);
+    //                 let mut handle_group = handle_group.write().unwrap();
+    //                 handle_group
+    //                     .map
+    //                     .entry(ino)
+    //                     .or_insert(Vec::new())
+    //                     .push(FileHandle {
+    //                         content: Arc::new(data),
+    //                         handle: fh,
+    //                     });
+    //             }
+    //             Err(err) => {
+    //                 log::error!(
+    //                     "{}:{} ino: {}, fh: {}, offset: {}, size: {}, error: {}",
+    //                     std::file!(),
+    //                     std::line!(),
+    //                     ino,
+    //                     fh,
+    //                     offset,
+    //                     size,
+    //                     err
+    //                 );
+    //                 reply.error(ENOSYS);
+    //             }
+    //         });
+    //     });
+    // }
 
     /// Write data.
     /// Write should return exactly the number of bytes requested except on error. An

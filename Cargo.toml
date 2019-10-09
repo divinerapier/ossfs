@@ -19,6 +19,7 @@ threadpool = "1.7.1"
 id_tree = "1.7.0"
 walkdir = "2.2.9"
 clap = "2.33.0"
+md5 = "0.6.1"
 
 # examples and tests
 [dev-dependencies]
@@ -36,3 +37,7 @@ path = "benches/listreadfiles/main.rs"
 [[bin]]
 name = "readfiles"
 path = "benches/readfiles/main.rs"
+
+[[bin]]
+name = "md5checker"
+path = "benches/md5checker/main.rs"
