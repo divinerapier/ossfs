@@ -24,27 +24,29 @@ tokio = "0.1.22"
 tokio-fs = "0.1.6"
 futures = "0.1.29"
 
-# profile
-[profile.release]
-debug = true
-
-# examples and tests
+# dependencies for examples
 [dev-dependencies]
 walkdir = "2.2.9"
 clap = "2.33.0"
 
+# examples
 [[bin]]
 name = "simple-server"
 path = "examples/simple-server/main.rs"
 
+# tools
 [[bin]]
 name = "listreadfiles"
-path = "benches/listreadfiles/main.rs"
+path = "tools/listreadfiles/main.rs"
 
 [[bin]]
 name = "readfiles"
-path = "benches/readfiles/main.rs"
+path = "tools/readfiles/main.rs"
 
 [[bin]]
 name = "md5checker"
-path = "benches/md5checker/main.rs"
+path = "tools/md5checker/main.rs"
+
+# profile
+[profile.release]
+debug = true
