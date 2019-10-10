@@ -13,16 +13,22 @@ time = "0.1.42"
 log = "0.4.8"
 env_logger = "0.6.2"
 nix = "0.15.0"
-rusoto_s3 = "0.40.0"
-rusoto_core = "0.40.0"
+rusoto_s3 = "0.41.0"
+rusoto_core = "0.41.0"
 threadpool = "1.7.1"
 id_tree = "1.7.0"
 walkdir = "2.2.9"
-clap = "2.33.0"
 md5 = "0.6.1"
 tokio = "0.1.22"
 tokio-fs = "0.1.6"
 futures = "0.1.29"
+srand = "0.4.0"
+
+[dependencies.clap]
+version = "2.33.0"
+default-features = false
+# Cherry-pick the features you'd like to use
+features = [ "suggestions", "color" ]
 
 # dependencies for examples
 [dev-dependencies]
@@ -46,6 +52,10 @@ path = "tools/readfiles/main.rs"
 [[bin]]
 name = "md5checker"
 path = "tools/md5checker/main.rs"
+
+[[bin]]
+name = "dd"
+path = "tools/dd/main.rs"
 
 # profile
 [profile.release]
