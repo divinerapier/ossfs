@@ -5,6 +5,7 @@ use fuse::FileType;
 use std::fmt::Debug;
 use std::path::Path;
 
+pub mod async_simple;
 pub mod s3;
 pub mod simple;
 

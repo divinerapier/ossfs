@@ -482,7 +482,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                     reply.data(&data[offset..end]);
 
                     let mut handle_group = handle_group.write().unwrap();
-                    if true {
+                    if false {
                         handle_group.total_length += data.len() as u64;
                         handle_group
                             .map

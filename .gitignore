@@ -25,3 +25,7 @@ Cargo.lock
 # Testing
 tmp/
 mnt/
+
+# Perf
+*.svg
+perf.data*

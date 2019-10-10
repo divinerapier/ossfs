@@ -3,6 +3,8 @@ use crate::ossfs_impl::filesystem::ROOT_INODE;
 use crate::ossfs_impl::node::Node;
 use crate::ossfs_impl::stat::Stat;
 use fuse::{FileAttr, FileType};
+use futures::future::Future;
+use futures::stream::Stream;
 use std::fmt::Debug;
 use std::io::Read;
 use std::io::Seek;
@@ -13,19 +15,19 @@ use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
 #[derive(Debug)]
-pub struct SimpleBackend {
+pub struct AsyncSimpleBackend {
     root: String,
     root_attr: FileAttr,
 }
 
-impl SimpleBackend {
-    pub fn new<R>(root: R) -> SimpleBackend
+impl AsyncSimpleBackend {
+    pub fn new<R>(root: R) -> AsyncSimpleBackend
     where
         R: Into<String>,
     {
         let root = root.into();
         let meta: std::fs::Metadata = std::fs::metadata(&root).unwrap();
-        SimpleBackend {
+        AsyncSimpleBackend {
             root,
             root_attr: FileAttr {
                 ino: ROOT_INODE,
@@ -68,7 +70,7 @@ impl SimpleBackend {
     }
 }
 
-impl super::Backend for SimpleBackend {
+impl super::Backend for AsyncSimpleBackend {
     fn root(&self) -> Node {
         Node::new(
             ROOT_INODE,
@@ -79,50 +81,53 @@ impl super::Backend for SimpleBackend {
     }
 
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>> {
-        let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
-            Ok(dir) => dir,
-            Err(e) => return Err(Error::Naive(format!("{}", e))),
-        };
-
-        Ok(list
-            .map(|entry| {
-                let entry: std::fs::DirEntry = entry.unwrap();
-                let meta: std::fs::Metadata = entry.metadata().unwrap();
-                Node::new(
-                    0,
-                    0,
-                    PathBuf::from(entry.path()),
-                    FileAttr {
-                        ino: 0,
-                        size: meta.size(),
-                        blocks: meta.blocks(),
-                        atime: std::time::UNIX_EPOCH
-                            .clone()
-                            .add(std::time::Duration::from_secs(meta.atime() as u64)),
-                        mtime: std::time::UNIX_EPOCH
-                            .clone()
-                            .add(std::time::Duration::from_secs(meta.mtime() as u64)),
-                        ctime: std::time::UNIX_EPOCH
-                            .clone()
-                            .add(std::time::Duration::from_secs(meta.ctime() as u64)),
-                        crtime: std::time::UNIX_EPOCH
-                            .clone()
-                            .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-                        kind: if meta.is_dir() {
-                            FileType::Directory
-                        } else {
-                            FileType::RegularFile
+        {
+            let mut rt = tokio::runtime::Runtime::new().unwrap();
+            let path = path.as_ref();
+            let path = path.to_str().unwrap().to_owned();
+            let result = tokio_fs::read_dir(path)
+                .flatten_stream()
+                .map(|entry| {
+                    let entry: tokio_fs::DirEntry = entry;
+                    let entry = entry.into_std();
+                    let meta: std::fs::Metadata = entry.metadata().unwrap();
+                    Node::new(
+                        0,
+                        0,
+                        PathBuf::from(entry.path()),
+                        FileAttr {
+                            ino: 0,
+                            size: meta.size(),
+                            blocks: meta.blocks(),
+                            atime: std::time::UNIX_EPOCH
+                                .clone()
+                                .add(std::time::Duration::from_secs(meta.atime() as u64)),
+                            mtime: std::time::UNIX_EPOCH
+                                .clone()
+                                .add(std::time::Duration::from_secs(meta.mtime() as u64)),
+                            ctime: std::time::UNIX_EPOCH
+                                .clone()
+                                .add(std::time::Duration::from_secs(meta.ctime() as u64)),
+                            crtime: std::time::UNIX_EPOCH
+                                .clone()
+                                .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+                            kind: if meta.is_dir() {
+                                FileType::Directory
+                            } else {
+                                FileType::RegularFile
+                            },
+                            perm: meta.mode() as u16,
+                            nlink: meta.nlink() as u32,
+                            uid: meta.uid(),
+                            gid: meta.gid(),
+                            rdev: meta.rdev() as u32,
+                            flags: 0,
                         },
-                        perm: meta.mode() as u16,
-                        nlink: meta.nlink() as u32,
-                        uid: meta.uid(),
-                        gid: meta.gid(),
-                        rdev: meta.rdev() as u32,
-                        flags: 0,
-                    },
-                )
-            })
-            .collect::<Vec<Node>>())
+                    )
+                })
+                .collect();
+            Ok(rt.block_on(result)?)
+        }
     }
 
     fn get_child<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node> {
@@ -255,6 +260,12 @@ impl super::Backend for SimpleBackend {
         // let mut buffer: Vec<u8> = vec![0; size];
         // file.read_to_end(&mut buffer)?;
         // Ok(buffer)
-        Ok(std::fs::read(path)?)
+
+        let path = path.as_ref();
+        let path = path.to_str().unwrap().to_owned();
+        let task = tokio::fs::read(path);
+        let mut rt = tokio::runtime::Runtime::new().unwrap();
+        let data = rt.block_on(task)?;
+        Ok(data)
     }
 }

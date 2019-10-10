@@ -20,6 +20,13 @@ id_tree = "1.7.0"
 walkdir = "2.2.9"
 clap = "2.33.0"
 md5 = "0.6.1"
+tokio = "0.1.22"
+tokio-fs = "0.1.6"
+futures = "0.1.29"
+
+# profile
+[profile.release]
+debug = true
 
 # examples and tests
 [dev-dependencies]
