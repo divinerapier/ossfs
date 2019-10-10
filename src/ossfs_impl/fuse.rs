@@ -415,12 +415,84 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
             offset,
             size,
         );
+        // try read from cache
+        {
+            let handle_group = self.handle_group.read().unwrap();
+            if let Some(group) = handle_group.map.get(&ino) {
+                for elem in group {
+                    if elem.handle == fh {
+                        let data: &[u8] = &elem.content;
+                        let offset: usize = offset as usize;
+                        let size: usize = size as usize;
+                        let end = if offset + size > data.len() {
+                            data.len()
+                        } else {
+                            offset + size
+                        };
+                        reply.data(&data[offset..end]);
+                        return;
+                    }
+                }
+                drop(handle_group);
+                let handle_group = self.handle_group.clone();
+                let mut handle_group = handle_group.write().unwrap();
+                if let Some(group) = handle_group.map.get_mut(&ino) {
+                    if group.len() != 0 {
+                        let old_elem: &FileHandle = &(group[0]);
+                        let new_elem = FileHandle {
+                            content: old_elem.content.clone(),
+                            handle: fh,
+                        };
+                        log::info!(
+                            "add new cache. ino: {}, fh: {}, length: {}",
+                            ino,
+                            fh,
+                            new_elem.content.len()
+                        );
+
+                        let data: &[u8] = &new_elem.content;
+                        let offset: usize = offset as usize;
+                        let size: usize = size as usize;
+                        let end = if offset + size > data.len() {
+                            data.len()
+                        } else {
+                            offset + size
+                        };
+                        reply.data(&data[offset..end]);
+
+                        group.push(new_elem);
+                        return;
+                    }
+                }
+            }
+        }
 
         let fs = self.fs.clone();
+        let handle_group = self.handle_group.clone();
         self.pool.execute(move || {
             fs.read(ino, fh, offset, size, |result| match result {
                 Ok(data) => {
-                    reply.data(&data);
+                    let offset: usize = offset as usize;
+                    let size: usize = size as usize;
+                    let end = if offset + size > data.len() {
+                        data.len()
+                    } else {
+                        offset + size
+                    };
+                    reply.data(&data[offset..end]);
+
+                    let mut handle_group = handle_group.write().unwrap();
+                    if true {
+                        handle_group.total_length += data.len() as u64;
+                        handle_group
+                            .map
+                            .entry(ino)
+                            .or_insert(Vec::new())
+                            .push(FileHandle {
+                                content: Arc::new(data),
+                                handle: fh,
+                            });
+                    }
                 }
                 Err(err) => {
                     log::error!(
@@ -438,95 +510,6 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
             });
         });
     }
-
-    // fn read(&mut self, req: &Request, ino: u64, fh: u64, offset: i64, size: u32, reply: ReplyData) {
-    //     log::debug!(
-    //         "{}:{}, ino: {}, fh: {}, offset: {}, size: {}",
-    //         std::file!(),
-    //         std::line!(),
-    //         ino,
-    //         fh,
-    //         offset,
-    //         size,
-    //     );
-    //     // try read from cache
-    //     {
-    //         let handle_group = self.handle_group.read().unwrap();
-    //         if let Some(group) = handle_group.map.get(&ino) {
-    //             for elem in group {
-    //                 if elem.handle == fh {
-    //                     log::info!(
-    //                         "read from cache. ino: {}, fh: {}, length: {}",
-    //                         ino,
-    //                         fh,
-    //                         elem.content.len()
-    //                     );
-    //                     reply.data(&elem.content);
-    //                     return;
-    //                 }
-    //             }
-    //             drop(handle_group);
-    //             let handle_group = self.handle_group.clone();
-    //             let mut handle_group = handle_group.write().unwrap();
-    //             if let Some(group) = handle_group.map.get_mut(&ino) {
-    //                 if group.len() != 0 {
-    //                     let old_elem: &FileHandle = &(group[0]);
-    //                     let new_elem = FileHandle {
-    //                         content: old_elem.content.clone(),
-    //                         handle: fh,
-    //                     };
-    //                     log::info!(
-    //                         "add new cache. ino: {}, fh: {}, length: {}",
-    //                         ino,
-    //                         fh,
-    //                         new_elem.content.len()
-    //                     );
-    //                     reply.data(&new_elem.content);
-    //                     group.push(new_elem);
-    //                     return;
-    //                 }
-    //             }
-    //         }
-    //     }
-
-    //     let fs = self.fs.clone();
-    //     let handle_group = self.handle_group.clone();
-    //     self.pool.execute(move || {
-    //         fs.read(ino, fh, offset, size, |result| match result {
-    //             Ok(data) => {
-    //                 log::info!(
-    //                     "read from backend. ino: {}, fh: {}, length: {}",
-    //                     ino,
-    //                     fh,
-    //                     data.len()
-    //                 );
-    //                 reply.data(&data);
-    //                 let mut handle_group = handle_group.write().unwrap();
-    //                 handle_group
-    //                     .map
-    //                     .entry(ino)
-    //                     .or_insert(Vec::new())
-    //                     .push(FileHandle {
-    //                         content: Arc::new(data),
-    //                         handle: fh,
-    //                     });
-    //             }
-    //             Err(err) => {
-    //                 log::error!(
-    //                     "{}:{} ino: {}, fh: {}, offset: {}, size: {}, error: {}",
-    //                     std::file!(),
-    //                     std::line!(),
-    //                     ino,
-    //                     fh,
-    //                     offset,
-    //                     size,
-    //                     err
-    //                 );
-    //                 reply.error(ENOSYS);
-    //             }
-    //         });
-    //     });
-    // }
 
     /// Write data.
     /// Write should return exactly the number of bytes requested except on error. An

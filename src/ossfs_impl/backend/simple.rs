@@ -252,9 +252,8 @@ impl super::Backend for SimpleBackend {
             offset,
             size,
         );
-        file.seek(std::io::SeekFrom::Start(offset))?;
         let mut buffer: Vec<u8> = vec![0; size];
-        file.read_exact(&mut buffer)?;
+        file.read_to_end(&mut buffer)?;
         Ok(buffer)
     }
 }
