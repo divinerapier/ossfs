@@ -11,14 +11,14 @@ fn main() {
     let mountpoint = env::var("MOUNT_POINT").unwrap_or(String::from("./mnt"));
     let rootpath = env::var("ROOT_PATH").unwrap_or(String::from("./root"));
 
-    let fs = ossfs::Fuse::new(ossfs::SimpleBackend::new(rootpath));
+    let fs = ossfs::Fuse::new(ossfs::SimpleBackend::new(rootpath), false);
     // let fs = super::Fuse::new(super::S3Backend::new(
     //     "http://172.21.20.134:9001",
     //     "5577006791947779410",
     //     "admin",
     //     "password",
     // ));
-    let options = ["-o", "rw", "-o", "fsname=ossfs"]
+    let options = ["-o", "rw", "-o", "fsname=ossfs", "-o", "direct_io"]
         .iter()
         .map(|o| o.as_ref())
         .collect::<Vec<&std::ffi::OsStr>>();

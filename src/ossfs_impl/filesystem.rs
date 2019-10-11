@@ -213,13 +213,6 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
     }
 
     pub fn readdir(&self, parent_ino: u64, file_handle: u64, offset: usize) -> Result<Vec<Node>> {
-        log::info!(
-            "{}:{} parent: {}, offset: {}",
-            std::file!(),
-            std::line!(),
-            parent_ino,
-            offset
-        );
         let parent_index = {
             let nodes_manager = self.nodes_manager.read().unwrap();
             match nodes_manager.ino_mapper.get(&parent_ino) {

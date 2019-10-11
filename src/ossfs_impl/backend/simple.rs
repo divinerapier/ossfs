@@ -236,25 +236,25 @@ impl super::Backend for SimpleBackend {
     }
 
     fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> Result<Vec<u8>> {
-        // let mut file = std::fs::OpenOptions::new()
-        //     .read(true)
-        //     .write(false)
-        //     .append(false)
-        //     .truncate(false)
-        //     .create(false)
-        //     .create_new(false)
-        //     .open(path.as_ref())?;
-        // log::trace!(
-        //     "{}:{} path: {:?} offset: {} size: {}",
-        //     std::file!(),
-        //     std::line!(),
-        //     path.as_ref(),
-        //     offset,
-        //     size,
-        // );
-        // let mut buffer: Vec<u8> = vec![0; size];
-        // file.read_to_end(&mut buffer)?;
-        // Ok(buffer)
-        Ok(std::fs::read(path)?)
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(false)
+            .append(false)
+            .truncate(false)
+            .create(false)
+            .create_new(false)
+            .open(path.as_ref())?;
+        log::trace!(
+            "{}:{} path: {:?} offset: {} size: {}",
+            std::file!(),
+            std::line!(),
+            path.as_ref(),
+            offset,
+            size,
+        );
+        let mut buffer: Vec<u8> = vec![0; size];
+        file.read_exact(&mut buffer)?;
+        Ok(buffer)
+        // Ok(std::fs::read(path)?)
     }
 }

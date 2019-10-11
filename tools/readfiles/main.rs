@@ -63,27 +63,27 @@ fn recursive(path: String, concurrency: usize) {
     let elapsed2 = std::time::SystemTime::now()
         .duration_since(begin_at)
         .unwrap();
-    println!(
-        "list files: total count: {}, elapsed: {:?}",
-        m.len(),
-        elapsed2,
-    );
     let slice = std::sync::Arc::new(m);
     let mut handlers = vec![];
+    let global_index = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     for i in 0..concurrency {
         let slice = slice.clone();
+        let global_index = global_index.clone();
         let h = std::thread::spawn(move || {
             let mut total_count = 0;
-            let mut local_count = 0;
-            for index in (i..slice.len()).step_by(concurrency) {
+            loop {
+                let index = global_index.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                if index >= slice.len() {
+                    return total_count;
+                }
                 let data = std::fs::read(&slice[index]).unwrap();
                 total_count += data.len();
-                local_count += 1;
-                if local_count % 10000 == 0 {
-                    println!("index: {}, count: {}", i, local_count);
+                if (index + 1) % 10000 == 0 {
+                    let now = std::time::SystemTime::now();
+                    let now = now.duration_since(std::time::UNIX_EPOCH).unwrap();
+                    println!("{:010.4?} thread: {:04}, count: {:09}", now, i, (index + 1));
                 }
             }
-            total_count
         });
         handlers.push(h);
     }
@@ -96,7 +96,7 @@ fn recursive(path: String, concurrency: usize) {
         .unwrap()
         - elapsed2;
     println!(
-        "list files: total count: {}, total length: {}, elapsed: {:?}",
+        "total count: {}, total length: {}, elapsed: {:?}",
         slice.len(),
         total_length,
         elapsed3,

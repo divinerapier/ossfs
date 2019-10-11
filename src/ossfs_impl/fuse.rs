@@ -46,10 +46,12 @@ where
     pool: threadpool::ThreadPool,
 
     handle_group: Arc<RwLock<HandleGroup>>,
+
+    enable_cache: bool,
 }
 
 impl<B: Backend + std::fmt::Debug + Send + Sync + 'static> Fuse<B> {
-    pub fn new(backend: B) -> Fuse<B> {
+    pub fn new(backend: B, enable_cache: bool) -> Fuse<B> {
         Fuse {
             fs: Arc::new(FileSystem::new(backend)),
             // inode_cache: HashMap::new(),
@@ -58,6 +60,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync + 'static> Fuse<B> {
             handle_reference: HashMap::new(),
             pool: threadpool::ThreadPool::new(32),
             handle_group: Arc::new(RwLock::new(HandleGroup::new())),
+            enable_cache,
         }
     }
 }
@@ -406,7 +409,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
     /// if the open method didn't set any value.
 
     fn read(&mut self, req: &Request, ino: u64, fh: u64, offset: i64, size: u32, reply: ReplyData) {
-        log::debug!(
+        log::info!(
             "{}:{}, ino: {}, fh: {}, offset: {}, size: {}",
             std::file!(),
             std::line!(),
@@ -415,20 +418,30 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
             offset,
             size,
         );
-        // try read from cache
-        {
+
+        if self.enable_cache {
+            // try read from cache
+            fn read_to(offset: usize, size: usize, data_length: usize) -> usize {
+                let expected = offset + size;
+                if expected > data_length {
+                    data_length
+                } else {
+                    expected
+                }
+            }
+            let offset: usize = offset as usize;
+            let size: usize = size as usize;
             let handle_group = self.handle_group.read().unwrap();
             if let Some(group) = handle_group.map.get(&ino) {
                 for elem in group {
                     if elem.handle == fh {
                         let data: &[u8] = &elem.content;
-                        let offset: usize = offset as usize;
-                        let size: usize = size as usize;
-                        let end = if offset + size > data.len() {
-                            data.len()
-                        } else {
-                            offset + size
-                        };
+                        let end = read_to(offset, size, data.len());
+                        // let end = if offset + size > data.len() {
+                        //     data.len()
+                        // } else {
+                        //     offset + size
+                        // };
                         reply.data(&data[offset..end]);
                         return;
                     }
@@ -451,13 +464,12 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                         );
 
                         let data: &[u8] = &new_elem.content;
-                        let offset: usize = offset as usize;
-                        let size: usize = size as usize;
-                        let end = if offset + size > data.len() {
-                            data.len()
-                        } else {
-                            offset + size
-                        };
+                        let end = read_to(offset, size, data.len());
+                        // let end = if offset + size > data.len() {
+                        //     data.len()
+                        // } else {
+                        //     offset + size
+                        // };
                         reply.data(&data[offset..end]);
 
                         group.push(new_elem);
@@ -469,20 +481,13 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
 
         let fs = self.fs.clone();
         let handle_group = self.handle_group.clone();
+        let enable_cache = self.enable_cache;
         self.pool.execute(move || {
             fs.read(ino, fh, offset, size, |result| match result {
                 Ok(data) => {
-                    let offset: usize = offset as usize;
-                    let size: usize = size as usize;
-                    let end = if offset + size > data.len() {
-                        data.len()
-                    } else {
-                        offset + size
-                    };
-                    reply.data(&data[offset..end]);
-
+                    reply.data(&data);
                     let mut handle_group = handle_group.write().unwrap();
-                    if false {
+                    if enable_cache {
                         handle_group.total_length += data.len() as u64;
                         handle_group
                             .map
@@ -649,6 +654,13 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
+        log::debug!(
+            "{}:{} ino: {}, offset: {}",
+            std::file!(),
+            std::line!(),
+            ino,
+            offset
+        );
         let mut curr_offset = offset + 1;
         match self.fs.readdir(ino, fh, offset as usize) {
             Ok(children) => {
