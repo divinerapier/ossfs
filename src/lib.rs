@@ -1,3 +1,4 @@
+mod counter;
 mod error;
 mod ossfs_impl;
 

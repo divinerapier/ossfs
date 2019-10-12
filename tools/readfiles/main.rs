@@ -79,9 +79,18 @@ fn recursive(path: String, concurrency: usize) {
                 let data = std::fs::read(&slice[index]).unwrap();
                 total_count += data.len();
                 if (index + 1) % 10000 == 0 {
-                    let now = std::time::SystemTime::now();
-                    let now = now.duration_since(std::time::UNIX_EPOCH).unwrap();
-                    println!("{:010.4?} thread: {:04}, count: {:09}", now, i, (index + 1));
+                    let time_now = std::time::SystemTime::now();
+                    let now = time_now.duration_since(std::time::UNIX_EPOCH).unwrap();
+                    let e: std::time::Duration =
+                        time_now.duration_since(begin_at).unwrap() - elapsed2;
+                    let e = e.as_secs_f64();
+                    println!(
+                        "{:010.4?} thread: {:04}, count: {:09}, iops: {:9.3?}",
+                        now,
+                        i,
+                        (index + 1),
+                        (index + 1) as f64 / e
+                    );
                 }
             }
         });

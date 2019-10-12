@@ -29,3 +29,6 @@ mnt/
 # Perf
 *.svg
 perf.data*
+
+# Log
+*.log

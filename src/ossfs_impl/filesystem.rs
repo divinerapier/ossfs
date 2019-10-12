@@ -18,6 +18,7 @@ pub(crate) struct InodeManager {
     nodes_tree: Tree<Node>,
     ino_mapper: HashMap<u64, NodeId>,
     children_name: HashMap<u64, HashMap<std::ffi::OsString, u64>>,
+    counter: crate::counter::Counter,
 }
 
 impl InodeManager {
@@ -30,10 +31,12 @@ impl InodeManager {
             nodes_tree,
             ino_mapper,
             children_name,
+            counter: crate::counter::Counter::new(1),
         }
     }
 
     pub fn get_node_by_inode(&self, ino: u64) -> Result<&Node> {
+        let _start = self.counter.start("im::get_node_by_inode".to_owned());
         let parent_index: &NodeId = self.ino_mapper.get(&ino).ok_or_else(|| {
             log::error!("{}:{} ino: {} not found", std::file!(), std::line!(), ino,);
             Error::Naive(format!("parent not found"))
@@ -50,6 +53,7 @@ impl InodeManager {
         check_empty: bool,
     ) -> Result<Option<Vec<Node>>> {
         // log::trace!("{:#?}", self.nodes_tree);
+        let _start = self.counter.start("im::get_children_by_index".to_owned());
         match self.nodes_tree.children(index) {
             Ok(children) => {
                 let mut children = children.peekable();
@@ -76,6 +80,7 @@ impl InodeManager {
     }
 
     pub fn next_inode(&self) -> u64 {
+        let _start = self.counter.start("im::next_inode".to_owned());
         self.ino_mapper.len() as u64 + 1
     }
 }
@@ -87,6 +92,7 @@ where
 {
     backend: B,
     nodes_manager: std::sync::Arc<std::sync::RwLock<InodeManager>>,
+    counter: crate::counter::Counter,
 }
 
 unsafe impl<B: Backend + std::fmt::Debug + Send + Sync> Send for FileSystem<B> {}
@@ -111,10 +117,12 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
                 ino_mapper,
                 children_name,
             ))),
+            counter: crate::counter::Counter::new(1),
         }
     }
 
     pub fn lookup(&self, ino: u64, name: &OsStr) -> Result<FileAttr> {
+        let _start = self.counter.start("fs::lookup".to_owned());
         {
             let nodes_manager = self.nodes_manager.read().unwrap();
             let children_set = nodes_manager.children_name.get(&ino).unwrap();
@@ -133,12 +141,14 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
     }
 
     pub fn getattr(&self, ino: u64) -> Option<FileAttr> {
+        let _start = self.counter.start("fs::getattr".to_owned());
         let nodes_manager = self.nodes_manager.read().unwrap();
         let node = nodes_manager.get_node_by_inode(ino).unwrap();
         Some(node.attr().clone())
     }
 
     pub fn add_node_locally(&self, parent_index: &NodeId, parent_inode: u64, child_node: &Node) {
+        let _start = self.counter.start("fs::add_node_locally".to_owned());
         let mut nodes_manager = self.nodes_manager.write().unwrap();
         let next_inode = nodes_manager.next_inode();
         child_node.set_inode(next_inode, parent_inode);
@@ -166,6 +176,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
     }
 
     pub fn fetch_child_by_name(&self, ino: u64, name: &OsStr) -> Result<Node> {
+        let _start = self.counter.start("fs::fetch_child_by_name".to_owned());
         let (parent_index, child_node) = {
             let nodes_manager = self.nodes_manager.read().unwrap();
             let parent_index = nodes_manager.ino_mapper.get(&ino).unwrap();
@@ -178,6 +189,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
     }
 
     pub fn fetch_children(&self, index: NodeId) -> Result<()> {
+        let _start = self.counter.start("fs::fetch_children".to_owned());
         let parent_node = {
             let nodes_manager = self.nodes_manager.read().unwrap();
             let node = nodes_manager.nodes_tree.get(&index).unwrap();
@@ -208,11 +220,13 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         offset: usize,
         check_empty: bool,
     ) -> Result<Option<Vec<Node>>> {
+        let _start = self.counter.start("fs::readdir_local".to_owned());
         let nodes_manager = self.nodes_manager.read().unwrap();
         nodes_manager.get_children_by_index(&index, offset, 85, check_empty)
     }
 
     pub fn readdir(&self, parent_ino: u64, file_handle: u64, offset: usize) -> Result<Vec<Node>> {
+        let _start = self.counter.start("fs::readdir".to_owned());
         let parent_index = {
             let nodes_manager = self.nodes_manager.read().unwrap();
             match nodes_manager.ino_mapper.get(&parent_ino) {
@@ -237,6 +251,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
     }
 
     pub fn statfs(&self, ino: u64) -> Result<Stat> {
+        let _start = self.counter.start("fs::statfs".to_owned());
         let nodes_manager = self.nodes_manager.read().unwrap();
         let node = nodes_manager.get_node_by_inode(ino)?;
         self.backend.statfs(node.path())
@@ -320,6 +335,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
     where
         F: FnOnce(Result<Vec<u8>>),
     {
+        let _start = self.counter.start("fs::read".to_owned());
         let nodes_manager = self.nodes_manager.read().unwrap();
         let index = nodes_manager.ino_mapper.get(&ino).unwrap();
         let node: &TreeNode<Node> = nodes_manager.nodes_tree.get(index).unwrap();

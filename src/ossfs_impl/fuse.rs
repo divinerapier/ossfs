@@ -44,9 +44,8 @@ where
     next_handle: AtomicU64,
     handle_reference: HashMap<u64, u64>,
     pool: threadpool::ThreadPool,
-
     handle_group: Arc<RwLock<HandleGroup>>,
-
+    counter: crate::counter::Counter,
     enable_cache: bool,
 }
 
@@ -60,6 +59,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync + 'static> Fuse<B> {
             handle_reference: HashMap::new(),
             pool: threadpool::ThreadPool::new(64),
             handle_group: Arc::new(RwLock::new(HandleGroup::new())),
+            counter: crate::counter::Counter::new(1),
             enable_cache,
         }
     }
@@ -85,28 +85,32 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
         let fs = self.fs.clone();
         let name = Arc::new(name.to_owned());
         let name = name.clone();
-        self.pool.execute(move || match fs.lookup(parent, &name) {
-            Ok(attr) => {
-                log::trace!(
-                    "{}:{}  parent: {}, name: {}, attr: {:?}",
-                    std::file!(),
-                    std::line!(),
-                    parent,
-                    name.to_string_lossy(),
-                    attr
-                );
-                reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
-            }
-            Err(e) => {
-                log::error!(
-                    "{}:{} parent: {}, name: {}, error: {}",
-                    std::file!(),
-                    std::line!(),
-                    parent,
-                    name.to_string_lossy(),
-                    e
-                );
-                reply.error(ENOENT);
+        let counter = self.counter.clone();
+        self.pool.execute(move || {
+            let _start = counter.start("lookup".to_owned());
+            match fs.lookup(parent, &name) {
+                Ok(attr) => {
+                    log::trace!(
+                        "{}:{}  parent: {}, name: {}, attr: {:?}",
+                        std::file!(),
+                        std::line!(),
+                        parent,
+                        name.to_string_lossy(),
+                        attr
+                    );
+                    reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
+                }
+                Err(e) => {
+                    log::error!(
+                        "{}:{} parent: {}, name: {}, error: {}",
+                        std::file!(),
+                        std::line!(),
+                        parent,
+                        name.to_string_lossy(),
+                        e
+                    );
+                    reply.error(ENOENT);
+                }
             }
         });
     }
@@ -400,6 +404,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
             _ino,
             _flags
         );
+        let _start = self.counter.start("open".to_owned());
         // reply.opened()
         self.pool.execute(move || reply.opened(0, _flags))
     }
@@ -434,8 +439,9 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
         let fs = self.fs.clone();
         let handle_group = self.handle_group.clone();
         let enable_cache = self.enable_cache;
-
+        let counter = self.counter.clone();
         self.pool.execute(move || {
+            let _start = counter.start("read".to_owned());
             // try read from cache
             let offset: usize = offset as usize;
             let size: usize = size as usize;
@@ -645,6 +651,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
         //     _flags
         // );
 
+        let _start = self.counter.start("opendir".to_owned());
+
         if _ino == 0 {
             panic!("open dir ino: 0");
         }
@@ -666,15 +674,17 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        log::info!(
-            "{}:{} ino: {}, offset: {}",
-            std::file!(),
-            std::line!(),
-            ino,
-            offset
-        );
+        // log::info!(
+        //     "{}:{} ino: {}, offset: {}",
+        //     std::file!(),
+        //     std::line!(),
+        //     ino,
+        //     offset
+        // );
         let fs = self.fs.clone();
+        let counter = self.counter.clone();
         self.pool.execute(move || {
+            let _start = counter.start("readdir".to_owned());
             let mut curr_offset = offset + 1;
             match fs.readdir(ino, fh, offset as usize) {
                 Ok(children) => {
