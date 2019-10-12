@@ -32,16 +32,33 @@ fn main() {
                 .help("Concurrency read")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("max-keys")
+                .required(false)
+                .long("max-keys")
+                .value_name("MAX_KEYS")
+                .help("Max keys to read")
+                .takes_value(true),
+        )
         .get_matches();
     let mountpoint = matches.value_of("mountpoint").unwrap();
-    if !matches.is_present("recursive") {
-        basic(mountpoint.to_owned());
+    let max_keys = if matches.is_present("max-keys") {
+        matches
+            .value_of("max-keys")
+            .unwrap()
+            .parse::<i64>()
+            .unwrap()
     } else {
-        recursive(mountpoint.to_owned(), 32);
+        -1
+    };
+    if !matches.is_present("recursive") {
+        basic(mountpoint.to_owned(), max_keys);
+    } else {
+        recursive(mountpoint.to_owned(), 32, max_keys);
     }
 }
 // total count: 100000, read files: 1387.315472927s, total length: 13609179611
-fn recursive(path: String, concurrency: usize) {
+fn recursive(path: String, concurrency: usize, max_keys: i64) {
     let begin_at = std::time::SystemTime::now();
     // let entries = std::fs::read_dir(path).unwrap();
     let elapsed1 = std::time::SystemTime::now()
@@ -52,13 +69,15 @@ fn recursive(path: String, concurrency: usize) {
     let wk = walkdir::WalkDir::new(path).into_iter();
     let mut m = vec![];
     for entry in wk {
-        // let b = std::time::SystemTime::now();
         let entry: walkdir::DirEntry = entry.unwrap();
         if entry.metadata().unwrap().is_dir() {
             continue;
         }
         let path = entry.path().to_str().unwrap().to_owned();
         m.push(path);
+        if max_keys > 0 && m.len() >= max_keys as usize {
+            break;
+        }
     }
     let elapsed2 = std::time::SystemTime::now()
         .duration_since(begin_at)
@@ -112,7 +131,7 @@ fn recursive(path: String, concurrency: usize) {
     );
 }
 
-fn basic(path: String) {
+fn basic(path: String, max_keys: i64) {
     let begin_at = std::time::SystemTime::now();
     let entries = std::fs::read_dir(path).unwrap();
     let elapsed1 = std::time::SystemTime::now()
