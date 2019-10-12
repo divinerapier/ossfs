@@ -88,6 +88,11 @@ impl super::Backend for SimpleBackend {
             .map(|entry| {
                 let entry: std::fs::DirEntry = entry.unwrap();
                 let meta: std::fs::Metadata = entry.metadata().unwrap();
+                log::info!(
+                    "backend:get_children. path: {:?}, child: {:?}",
+                    path,
+                    entry.path()
+                );
                 Node::new(
                     0,
                     0,
@@ -126,7 +131,7 @@ impl super::Backend for SimpleBackend {
     }
 
     fn get_child<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node> {
-        let meta = std::fs::metadata(path.as_ref())?;
+        let meta = std::fs::metadata(path.as_ref()).expect(&format!("path: {:?}", path));
         Ok(Node::new(
             0,
             0,

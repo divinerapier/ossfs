@@ -3,5 +3,6 @@ pub mod filesystem;
 pub mod fuse;
 pub mod node;
 pub mod stat;
+pub mod tree;
 
 pub use self::fuse::Fuse;
