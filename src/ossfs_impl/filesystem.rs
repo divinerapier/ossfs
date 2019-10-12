@@ -316,7 +316,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         return Some(node);
     }
 
-    pub fn read<F>(&self, ino: u64, _fh: u64, offset: i64, size: u32, f: F)
+    pub fn read<F>(&self, ino: u64, _fh: u64, all: bool, offset: usize, size: usize, f: F)
     where
         F: FnOnce(Result<Vec<u8>>),
     {
@@ -337,7 +337,9 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
                 offset, size, attr.size
             ))));
         }
-        let size = if attr.size < offset as u64 + size as u64 {
+        let size = if all {
+            attr.size
+        } else if attr.size < offset as u64 + size as u64 {
             attr.size - offset as u64
         } else {
             size as u64

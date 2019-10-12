@@ -58,7 +58,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync + 'static> Fuse<B> {
             path_cache: HashMap::new(),
             next_handle: AtomicU64::new(2),
             handle_reference: HashMap::new(),
-            pool: threadpool::ThreadPool::new(32),
+            pool: threadpool::ThreadPool::new(64),
             handle_group: Arc::new(RwLock::new(HandleGroup::new())),
             enable_cache,
         }
@@ -82,7 +82,10 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
     /// Look up a directory entry by name and get its attributes.
 
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
-        match self.fs.lookup(parent, name) {
+        let fs = self.fs.clone();
+        let name = Arc::new(name.to_owned());
+        let name = name.clone();
+        self.pool.execute(move || match fs.lookup(parent, &name) {
             Ok(attr) => {
                 log::trace!(
                     "{}:{}  parent: {}, name: {}, attr: {:?}",
@@ -105,7 +108,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                 );
                 reply.error(ENOENT);
             }
-        }
+        });
     }
 
     /// Forget about an inode.
@@ -129,7 +132,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
     /// Get file attributes.
 
     fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
-        match self.fs.getattr(ino) {
+        let fs = self.fs.clone();
+        self.pool.execute(move || match fs.getattr(ino) {
             Some(attr) => {
                 log::debug!(
                     "{}:{} ino: {}, attr: {:?}",
@@ -149,7 +153,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                 );
                 reply.error(ENOSYS);
             }
-        }
+        });
     }
 
     /// Set file attributes.
@@ -397,7 +401,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
             _flags
         );
         // reply.opened()
-        reply.opened(0, _flags);
+        self.pool.execute(move || reply.opened(0, _flags))
     }
 
     /// Read data.
@@ -409,7 +413,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
     /// if the open method didn't set any value.
 
     fn read(&mut self, req: &Request, ino: u64, fh: u64, offset: i64, size: u32, reply: ReplyData) {
-        log::info!(
+        log::trace!(
             "{}:{}, ino: {}, fh: {}, offset: {}, size: {}",
             std::file!(),
             std::line!(),
@@ -418,76 +422,82 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
             offset,
             size,
         );
-
-        if self.enable_cache {
-            // try read from cache
-            fn read_to(offset: usize, size: usize, data_length: usize) -> usize {
-                let expected = offset + size;
-                if expected > data_length {
-                    data_length
-                } else {
-                    expected
-                }
-            }
-            let offset: usize = offset as usize;
-            let size: usize = size as usize;
-            let handle_group = self.handle_group.read().unwrap();
-            if let Some(group) = handle_group.map.get(&ino) {
-                for elem in group {
-                    if elem.handle == fh {
-                        let data: &[u8] = &elem.content;
-                        let end = read_to(offset, size, data.len());
-                        // let end = if offset + size > data.len() {
-                        //     data.len()
-                        // } else {
-                        //     offset + size
-                        // };
-                        reply.data(&data[offset..end]);
-                        return;
-                    }
-                }
-                drop(handle_group);
-                let handle_group = self.handle_group.clone();
-                let mut handle_group = handle_group.write().unwrap();
-                if let Some(group) = handle_group.map.get_mut(&ino) {
-                    if group.len() != 0 {
-                        let old_elem: &FileHandle = &(group[0]);
-                        let new_elem = FileHandle {
-                            content: old_elem.content.clone(),
-                            handle: fh,
-                        };
-                        log::info!(
-                            "add new cache. ino: {}, fh: {}, length: {}",
-                            ino,
-                            fh,
-                            new_elem.content.len()
-                        );
-
-                        let data: &[u8] = &new_elem.content;
-                        let end = read_to(offset, size, data.len());
-                        // let end = if offset + size > data.len() {
-                        //     data.len()
-                        // } else {
-                        //     offset + size
-                        // };
-                        reply.data(&data[offset..end]);
-
-                        group.push(new_elem);
-                        return;
-                    }
-                }
+        #[inline]
+        fn read_to(offset: usize, size: usize, data_length: usize) -> usize {
+            let expected = offset + size;
+            if expected > data_length {
+                data_length
+            } else {
+                expected
             }
         }
-
         let fs = self.fs.clone();
         let handle_group = self.handle_group.clone();
         let enable_cache = self.enable_cache;
+
         self.pool.execute(move || {
-            fs.read(ino, fh, offset, size, |result| match result {
-                Ok(data) => {
-                    reply.data(&data);
+            // try read from cache
+            let offset: usize = offset as usize;
+            let size: usize = size as usize;
+            if enable_cache {
+                let mut need_add_reference= false;
+                {
+                    let handle_group = handle_group.read().unwrap();
+                    if let Some(group) = handle_group.map.get(&ino) {
+                        for elem in group {
+                            if elem.handle == fh {
+                                let data: &[u8] = &elem.content;
+                                let end = read_to(offset, size, data.len());
+                                reply.data(&data[offset..end]);
+                                return;
+                            }
+                        }
+                        need_add_reference = true;
+                    }
+                }
+                if need_add_reference {
                     let mut handle_group = handle_group.write().unwrap();
+                    if let Some(group) = handle_group.map.get_mut(&ino) {
+                        if group.len() != 0 {
+                            let old_elem: &FileHandle = &(group[0]);
+                            let new_elem = FileHandle {
+                                content: old_elem.content.clone(),
+                                handle: fh,
+                            };
+                            let data: &[u8] = &new_elem.content;
+                            let end = read_to(offset, size, data.len());
+                            reply.data(&data[offset..end]);
+                            log::trace!(
+                                "add new cache. ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
+                                ino,
+                                fh,
+                                new_elem.content.len(),
+                                offset, size, end
+                            );
+                            group.push(new_elem);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            fs.read(ino, fh, enable_cache, offset, size, |result| match result {
+                Ok(data) => {
                     if enable_cache {
+                        let end = read_to(offset, size, data.len());
+                        reply.data(&data[offset..end]);
+                        log::trace!(
+                            "{}:{} ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
+                            std::file!(),
+                            std::line!(),
+                            ino,
+                            fh,
+                            data.len(),
+                            offset,
+                            size,
+                            end
+                        );
+                        let mut handle_group = handle_group.write().unwrap();
                         handle_group.total_length += data.len() as u64;
                         handle_group
                             .map
@@ -497,6 +507,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                                 content: Arc::new(data),
                                 handle: fh,
                             });
+                    } else {
+                        reply.data(&data);
                     }
                 }
                 Err(err) => {
@@ -654,50 +666,53 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        log::debug!(
+        log::info!(
             "{}:{} ino: {}, offset: {}",
             std::file!(),
             std::line!(),
             ino,
             offset
         );
-        let mut curr_offset = offset + 1;
-        match self.fs.readdir(ino, fh, offset as usize) {
-            Ok(children) => {
-                for child in children {
-                    let child: Node = child;
-                    if reply.add(
-                        child.inode(),
-                        curr_offset,
-                        child.attr().kind,
-                        child.path().file_name().unwrap(),
-                    ) {
-                        log::trace!(
-                            "current offset: {}, next offset: {}",
+        let fs = self.fs.clone();
+        self.pool.execute(move || {
+            let mut curr_offset = offset + 1;
+            match fs.readdir(ino, fh, offset as usize) {
+                Ok(children) => {
+                    for child in children {
+                        let child: Node = child;
+                        if reply.add(
+                            child.inode(),
                             curr_offset,
-                            curr_offset + 1
-                        );
-                        break;
-                    } else {
-                        // break;
-                        curr_offset += 1;
+                            child.attr().kind,
+                            child.path().file_name().unwrap(),
+                        ) {
+                            log::trace!(
+                                "current offset: {}, next offset: {}",
+                                curr_offset,
+                                curr_offset + 1
+                            );
+                            break;
+                        } else {
+                            // break;
+                            curr_offset += 1;
+                        }
                     }
+                    reply.ok();
                 }
-                reply.ok();
+                Err(e) => {
+                    log::error!(
+                        "{}:{}, _ino: {}, _fh: {}, _offset: {}, error: {}",
+                        std::file!(),
+                        std::line!(),
+                        ino,
+                        fh,
+                        offset,
+                        e
+                    );
+                    reply.error(ENOTDIR);
+                }
             }
-            Err(e) => {
-                log::error!(
-                    "{}:{}, _ino: {}, _fh: {}, _offset: {}, error: {}",
-                    std::file!(),
-                    std::line!(),
-                    ino,
-                    fh,
-                    offset,
-                    e
-                );
-                reply.error(ENOTDIR);
-            }
-        }
+        });
     }
 
     /// Release an open directory.

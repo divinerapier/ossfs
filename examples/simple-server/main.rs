@@ -23,7 +23,11 @@ fn main() {
                 .takes_value(false),
         )
         .get_matches();
-    let backend: String = matches.value_of("backend").unwrap().to_owned();
+    let backend: String = if let Some(backend) = matches.value_of("backend") {
+        backend.to_owned()
+    } else {
+        "".to_owned()
+    };
     let enable_cache: bool = matches.is_present("cache");
 
     env_logger::from_env(
