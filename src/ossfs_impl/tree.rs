@@ -6,6 +6,10 @@ pub struct Tree {
     pub nodes: Vec<Node>,
 }
 
+pub struct Branch {
+    pub nodes: Vec<Node>,
+}
+
 #[derive(Debug)]
 pub struct Node {
     inode: Inode,
@@ -24,7 +28,7 @@ impl<'a> Iterator for Children<'a> {
         if self.current_index >= self.indexes.len() {
             return None;
         } else {
-            let n = Some(&self.nodes[ self.indexes[ self.current_index]].inode);
+            let n = Some(&self.nodes[self.indexes[self.current_index]].inode);
             self.current_index += 1;
             n
         }

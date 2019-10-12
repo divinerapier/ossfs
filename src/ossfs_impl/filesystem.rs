@@ -59,7 +59,13 @@ impl InodeManager {
                     if limit > 0 && i == limit as usize {
                         break;
                     }
-                    log::info!("{}:{} parent: {}, child: {:?}", std::file!(), std::line!(), ino, child);
+                    log::info!(
+                        "{}:{} parent: {}, child: {:?}",
+                        std::file!(),
+                        std::line!(),
+                        ino,
+                        child
+                    );
                     result.push(child.clone());
                 }
 
@@ -75,6 +81,55 @@ impl InodeManager {
     pub fn next_inode(&self) -> u64 {
         let _start = self.counter.start("im::next_inode".to_owned());
         self.nodes_tree.len() as u64
+    }
+
+    pub fn add_node_locally(&mut self, parent_inode: u64, child_node: &Node) {
+        let _start = self.counter.start("fs::add_node_locally".to_owned());
+        // let mut nodes_manager = self.nodes_manager.write().unwrap();
+        let next_inode = self.next_inode();
+        child_node.set_inode(next_inode, parent_inode);
+        self.nodes_tree.insert(parent_inode, child_node.clone());
+        match self.children_name.get_mut(&parent_inode) {
+            Some(children) => {
+                children.insert(
+                    child_node.path().file_name().unwrap().to_owned(),
+                    child_node.inode(),
+                );
+            }
+            None => {
+                let mut map = HashMap::new();
+                map.insert(
+                    child_node.path().file_name().unwrap().to_owned(),
+                    child_node.inode(),
+                );
+                self.children_name.insert(parent_inode, map);
+            }
+        }
+    }
+
+    pub fn batch_add_node_locally(&mut self, parent_inode: u64, children_nodes: &[Node]) {
+        let _start = self.counter.start("fs::add_node_locally".to_owned());
+        for child_node in children_nodes {
+            let next_inode = self.next_inode();
+            child_node.set_inode(next_inode, parent_inode);
+            self.nodes_tree.insert(parent_inode, child_node.clone());
+            match self.children_name.get_mut(&parent_inode) {
+                Some(children) => {
+                    children.insert(
+                        child_node.path().file_name().unwrap().to_owned(),
+                        child_node.inode(),
+                    );
+                }
+                None => {
+                    let mut map = HashMap::new();
+                    map.insert(
+                        child_node.path().file_name().unwrap().to_owned(),
+                        child_node.inode(),
+                    );
+                    self.children_name.insert(parent_inode, map);
+                }
+            }
+        }
     }
 }
 
@@ -133,32 +188,6 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         Some(node.attr().clone())
     }
 
-    pub fn add_node_locally(&self, parent_inode: u64, child_node: &Node) {
-        let _start = self.counter.start("fs::add_node_locally".to_owned());
-        let mut nodes_manager = self.nodes_manager.write().unwrap();
-        let next_inode = nodes_manager.next_inode();
-        child_node.set_inode(next_inode, parent_inode);
-        nodes_manager
-            .nodes_tree
-            .insert(parent_inode, child_node.clone());
-        match nodes_manager.children_name.get_mut(&parent_inode) {
-            Some(children) => {
-                children.insert(
-                    child_node.path().file_name().unwrap().to_owned(),
-                    child_node.inode(),
-                );
-            }
-            None => {
-                let mut map = HashMap::new();
-                map.insert(
-                    child_node.path().file_name().unwrap().to_owned(),
-                    child_node.inode(),
-                );
-                nodes_manager.children_name.insert(parent_inode, map);
-            }
-        }
-    }
-
     pub fn fetch_child_by_name(&self, ino: u64, name: &OsStr) -> Result<Node> {
         let _start = self.counter.start("fs::fetch_child_by_name".to_owned());
         let child_node = {
@@ -170,7 +199,9 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
                 .unwrap();
             child_node
         };
-        self.add_node_locally(ino, &child_node);
+
+        let mut nodes_manager = self.nodes_manager.write().unwrap();
+        nodes_manager.add_node_locally(ino, &child_node);
         Ok(child_node)
     }
 
@@ -187,9 +218,11 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
             .get_children(parent_node.path())
             .map(|children| {
                 let children: Vec<Node> = children;
-                for child in children {
-                    self.add_node_locally(parent_inode, &child);
-                }
+                let mut nodes_manager = self.nodes_manager.write().unwrap();
+                nodes_manager.batch_add_node_locally(parent_inode, &children);
+                // for child in children {
+                //     self.add_node_locally(parent_inode, &child);
+                // }
                 ()
             })
             .map_err(|err| {
@@ -299,7 +332,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
                 flags: 0,
             },
         );
-        self.add_node_locally(parent, &node);
+        let mut nodes_manager = self.nodes_manager.write().unwrap();
+        nodes_manager.add_node_locally(parent, &node);
         return Some(node);
     }
 
