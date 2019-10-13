@@ -716,6 +716,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                         }
                     }
                     reply.ok();
+                    // std::process::exit(1);
                 }
                 Err(e) => {
                     log::error!(

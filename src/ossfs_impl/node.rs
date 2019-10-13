@@ -1,4 +1,4 @@
-use fuse::FileAttr;
+use fuse::{FileAttr, FileType};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -14,7 +14,7 @@ pub struct InnerNode {
     pub attr: FileAttr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Node {
     inner: Arc<RwLock<InnerNode>>,
 }
@@ -68,3 +68,29 @@ impl Node {
 
 unsafe impl std::marker::Sync for Node {}
 unsafe impl std::marker::Send for Node {}
+
+impl Default for InnerNode {
+    fn default() -> Self {
+        InnerNode {
+            inode: 0,
+            parent: 0,
+            path: std::path::PathBuf::from(""),
+            attr: FileAttr {
+                ino: 0,
+                size: 0,
+                blocks: 0,
+                atime: std::time::SystemTime::UNIX_EPOCH,
+                mtime: std::time::SystemTime::UNIX_EPOCH,
+                ctime: std::time::SystemTime::UNIX_EPOCH,
+                crtime: std::time::SystemTime::UNIX_EPOCH,
+                kind: FileType::RegularFile,
+                perm: 0,
+                nlink: 0,
+                uid: 0,
+                gid: 0,
+                rdev: 0,
+                flags: 0,
+            },
+        }
+    }
+}
