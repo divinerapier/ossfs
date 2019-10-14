@@ -64,7 +64,7 @@ impl Tree {
         //     node_count: Arc::new(AtomicUsize::new(2)),
         // };
         let mut branches = vec![];
-        for _i in 0..100 {
+        for _i in 0..10000 {
             branches.push(Arc::new(RwLock::new(Branch::default())));
         }
         let t = Tree {
@@ -94,30 +94,33 @@ impl Tree {
         let parent_branch = self.branches[parent_ino % branch_count].read().unwrap();
         let parent_node = &parent_branch.nodes[parent_ino / branch_count];
         let parent_children_indexes: &[u64] = &parent_node.children_inodes;
+        if offset >= parent_children_indexes.len() {
+            return Ok(vec![]);
+        }
         // let limit = if offset + limit > parent_children_indexes.len() {
         //     parent_children_indexes.len() - offset
         // } else {
         //     limit
         // };
         let mut result = vec![];
-        log::info!(
-            "{}:{} parent: {}, children index: {:?}",
-            std::file!(),
-            std::line!(),
-            ino,
-            parent_children_indexes
-        );
+        // log::info!(
+        //     "{}:{} parent: {}, children index: {:?}",
+        //     std::file!(),
+        //     std::line!(),
+        //     ino,
+        //     parent_children_indexes
+        // );
         for (index, &child_ino) in parent_children_indexes.iter().skip(offset).enumerate() {
             if index >= limit {
                 break;
             }
             let child_node = self.get(child_ino)?;
-            log::info!(
-                "{}:{} push child inode: {:?}",
-                std::file!(),
-                std::line!(),
-                child_node
-            );
+            // log::info!(
+            //     "{}:{} push child inode: {:?}",
+            //     std::file!(),
+            //     std::line!(),
+            //     child_node
+            // );
             result.push(child_node);
         }
 
@@ -163,21 +166,6 @@ impl Tree {
         //     parent_ino,
         //     child
         // );
-        {
-            for (index, b) in self.branches.iter().enumerate() {
-                if index >= 4 && index < 99 {
-                    continue;
-                }
-                let b = b.read().unwrap();
-                log::info!(
-                    "{}:{} index: {}, branch: {:?}",
-                    std::file!(),
-                    std::line!(),
-                    index,
-                    b.nodes
-                );
-            }
-        }
         let branch_count = self.branches.len();
         let parent_ino = parent_ino as usize;
         let child_inode = {

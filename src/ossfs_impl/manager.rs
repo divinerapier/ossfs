@@ -52,19 +52,22 @@ impl InodeManager {
         check_empty: bool,
     ) -> Result<Option<Vec<Node>>> {
         // log::trace!("{:#?}", self.nodes_tree);
-        log::info!(
-            "{}:{} parent: {}, offset: {}, limit: {}",
-            std::file!(),
-            std::line!(),
-            ino,
-            offset,
-            limit
-        );
+        // log::info!(
+        //     "{}:{} parent: {}, offset: {}, limit: {}",
+        //     std::file!(),
+        //     std::line!(),
+        //     ino,
+        //     offset,
+        //     limit
+        // );
         let _start = self.counter.start("im::get_children_by_index".to_owned());
         match self.nodes_tree.children(ino, offset, limit as usize) {
             Ok(children) => {
                 // let mut children = children.peekable();
-                if check_empty && children.is_empty() {
+                // if offset > 6 {
+                //     log::info!("children: {:?}", children);
+                // }
+                if check_empty && children.is_empty() && offset == 0 {
                     return Ok(None);
                 }
                 // let children = children.skip(offset);
@@ -73,13 +76,13 @@ impl InodeManager {
                     if limit > 0 && i == limit as usize {
                         break;
                     }
-                    log::info!(
-                        "{}:{} parent: {}, child: {:?}",
-                        std::file!(),
-                        std::line!(),
-                        ino,
-                        child
-                    );
+                    // log::info!(
+                    //     "{}:{} parent: {}, child: {:?}",
+                    //     std::file!(),
+                    //     std::line!(),
+                    //     ino,
+                    //     child
+                    // );
                     result.push(child.clone());
                 }
 

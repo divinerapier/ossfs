@@ -90,14 +90,14 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
             let _start = counter.start("lookup".to_owned());
             match fs.lookup(parent, &name) {
                 Ok(attr) => {
-                    log::info!(
-                        "{}:{}  parent: {}, name: {}, attr: {:?}",
-                        std::file!(),
-                        std::line!(),
-                        parent,
-                        name.to_string_lossy(),
-                        attr
-                    );
+                    // log::info!(
+                    //     "{}:{}  parent: {}, name: {}, attr: {:?}",
+                    //     std::file!(),
+                    //     std::line!(),
+                    //     parent,
+                    //     name.to_string_lossy(),
+                    //     attr
+                    // );
                     reply.entry(&std::time::Duration::from_secs(1), &attr, 0);
                 }
                 Err(e) => {
@@ -139,13 +139,13 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
         let fs = self.fs.clone();
         self.pool.execute(move || match fs.getattr(ino) {
             Some(attr) => {
-                log::info!(
-                    "{}:{} ino: {}, attr: {:?}",
-                    std::file!(),
-                    std::line!(),
-                    ino,
-                    attr
-                );
+                // log::info!(
+                //     "{}:{} ino: {}, attr: {:?}",
+                //     std::file!(),
+                //     std::line!(),
+                //     ino,
+                //     attr
+                // );
                 reply.attr(&std::time::Duration::from_secs(1), &attr);
             }
             None => {
@@ -674,13 +674,13 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        log::info!(
-            "{}:{} ino: {}, offset: {}",
-            std::file!(),
-            std::line!(),
-            ino,
-            offset
-        );
+        // log::info!(
+        //     "{}:{} ino: {}, offset: {}",
+        //     std::file!(),
+        //     std::line!(),
+        //     ino,
+        //     offset
+        // );
         let fs = self.fs.clone();
         let counter = self.counter.clone();
         self.pool.execute(move || {
@@ -690,14 +690,14 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                 Ok(children) => {
                     for child in children {
                         let child: Node = child;
-                        log::info!(
-                            "reply dir. parent: {}, child: {}, offset: {}, kind: {:?}, filename: {:?}",
-                            ino,
-                            child.inode(),
-                            curr_offset,
-                            child.attr().kind,
-                            child.path().file_name().unwrap()
-                        );
+                        // log::info!(
+                        //     "reply dir. parent: {}, child: {}, offset: {}, kind: {:?}, filename: {:?}",
+                        //     ino,
+                        //     child.inode(),
+                        //     curr_offset,
+                        //     child.attr().kind,
+                        //     child.path().file_name().unwrap()
+                        // );
                         if reply.add(
                             child.inode(),
                             curr_offset,
