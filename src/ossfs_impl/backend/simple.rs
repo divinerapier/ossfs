@@ -1,3 +1,4 @@
+use crate::counter::Counter;
 use crate::error::{Error, Result};
 use crate::ossfs_impl::filesystem::ROOT_INODE;
 use crate::ossfs_impl::node::Node;
@@ -16,6 +17,7 @@ use std::time::UNIX_EPOCH;
 pub struct SimpleBackend {
     root: String,
     root_attr: FileAttr,
+    counter: Counter,
 }
 
 impl SimpleBackend {
@@ -64,6 +66,7 @@ impl SimpleBackend {
                 /// Flags (macOS only, see chflags(2))
                 flags: 0,
             },
+            counter: Counter::new(1),
         }
     }
 }
@@ -236,6 +239,7 @@ impl super::Backend for SimpleBackend {
     }
 
     fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> Result<Vec<u8>> {
+        let _start = self.counter.start("syscall::read".to_owned());
         let mut file = std::fs::OpenOptions::new()
             .read(true)
             .write(false)

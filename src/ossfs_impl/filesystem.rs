@@ -336,10 +336,13 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         F: FnOnce(Result<Vec<u8>>),
     {
         let _start = self.counter.start("fs::read".to_owned());
-        let nodes_manager = self.nodes_manager.read().unwrap();
-        let index = nodes_manager.ino_mapper.get(&ino).unwrap();
-        let node: &TreeNode<Node> = nodes_manager.nodes_tree.get(index).unwrap();
-        let node: &Node = node.data();
+        let node = {
+            let nodes_manager = self.nodes_manager.read().unwrap();
+            let index = nodes_manager.ino_mapper.get(&ino).unwrap();
+            let node: &TreeNode<Node> = nodes_manager.nodes_tree.get(index).unwrap();
+            let node: Node = node.data().clone();
+            node
+        };
         let attr: &FileAttr = &node.attr();
         if attr.size < offset as u64 {
             log::error!(
