@@ -40,6 +40,13 @@ fn main() {
                 .help("Max keys to read")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("shuffle")
+                .required(false)
+                .long("shuffle")
+                .help("Shuffle file list")
+                .takes_value(false),
+        )
         .get_matches();
     let mountpoint = matches.value_of("mountpoint").unwrap();
     let max_keys = if matches.is_present("max-keys") {
@@ -51,14 +58,15 @@ fn main() {
     } else {
         -1
     };
+    let shuffle = matches.is_present("shuffle");
     if !matches.is_present("recursive") {
         basic(mountpoint.to_owned(), max_keys);
     } else {
-        recursive(mountpoint.to_owned(), 32, max_keys);
+        recursive(mountpoint.to_owned(), 32, max_keys, shuffle);
     }
 }
 // total count: 100000, read files: 1387.315472927s, total length: 13609179611
-fn recursive(path: String, concurrency: usize, max_keys: i64) {
+fn recursive(path: String, concurrency: usize, max_keys: i64, shuffle: bool) {
     let begin_at = std::time::SystemTime::now();
     // let entries = std::fs::read_dir(path).unwrap();
     let elapsed1 = std::time::SystemTime::now()
@@ -82,6 +90,20 @@ fn recursive(path: String, concurrency: usize, max_keys: i64) {
     let elapsed2 = std::time::SystemTime::now()
         .duration_since(begin_at)
         .unwrap();
+    println!("load file list: {:?}", elapsed2);
+    if shuffle {
+        srand::ThreadLocal::seed(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64,
+        );
+        srand::ThreadLocal::shuffle(&mut m);
+        let shuffle_elapsed = std::time::SystemTime::now()
+            .duration_since(begin_at)
+            .unwrap();
+        println!("shuffle {:?}", shuffle_elapsed - elapsed2);
+    }
     let slice = std::sync::Arc::new(m);
     let mut handlers = vec![];
     let global_index = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));

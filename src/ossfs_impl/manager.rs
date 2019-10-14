@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 use crate::ossfs_impl::node::Node;
-use std::collections::HashMap;
+use hashbrown::HashMap;
 use std::ffi::OsStr;
 use std::sync::{
     atomic::{AtomicU64, Ordering},

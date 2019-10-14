@@ -23,6 +23,7 @@ tokio = "0.1.22"
 tokio-fs = "0.1.6"
 futures = "0.1.29"
 srand = "0.4.0"
+hashbrown = "0.6.1"
 
 [dependencies.clap]
 version = "2.33.0"

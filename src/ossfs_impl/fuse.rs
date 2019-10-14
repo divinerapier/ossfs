@@ -4,7 +4,7 @@ use crate::ossfs_impl::backend::Backend;
 use crate::ossfs_impl::filesystem::FileSystem;
 use crate::ossfs_impl::node::Node;
 use libc::{c_int, ENOENT, ENOSYS, ENOTDIR};
-use std::collections::HashMap;
+use hashbrown::HashMap;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::sync::{

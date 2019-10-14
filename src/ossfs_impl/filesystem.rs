@@ -4,7 +4,7 @@ use crate::ossfs_impl::manager::InodeManager;
 use crate::ossfs_impl::node::Node;
 use crate::ossfs_impl::stat::Stat;
 use fuse::{FileAttr, FileType};
-use std::collections::HashMap;
+use hashbrown::HashMap;
 use std::ffi::OsStr;
 use std::time::SystemTime;
 
