@@ -72,7 +72,7 @@ impl Drop for Tracer {
                 return;
             } else {
                 log::info!(
-                    "{:>30} {:>6} {:>4.3?} {:>4.3?} {:>4.3?}",
+                    "{:>30} {:>6} {:>04.3?} {:>04.3?} {:>04.3?}",
                     self.tag,
                     entry.count,
                     entry.min,

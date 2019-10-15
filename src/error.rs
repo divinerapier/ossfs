@@ -37,3 +37,10 @@ where
         Error::Backend(format!("{}", e))
     }
 }
+
+// FIXME:
+impl From<hyper::Error> for Error {
+    fn from(_: hyper::Error) -> Self {
+        unimplemented!()
+    }
+}
