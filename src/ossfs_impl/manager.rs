@@ -2,6 +2,7 @@ use crate::error::{Error, Result};
 use crate::ossfs_impl::node::Node;
 use id_tree::{NodeId, Tree};
 use std::collections::HashMap;
+use std::ffi::OsStr;
 
 #[derive(Debug)]
 pub(crate) struct InodeManager {
@@ -27,11 +28,11 @@ impl InodeManager {
 
     pub fn get_node_by_inode(&self, ino: u64) -> Result<&Node> {
         let _start = self.counter.start("im::get_node_by_inode".to_owned());
-        let parent_index: &NodeId = self.ino_mapper.get(&ino).ok_or_else(|| {
+        let node_index: &NodeId = self.ino_mapper.get(&ino).ok_or_else(|| {
             log::error!("{}:{} ino: {} not found", std::file!(), std::line!(), ino,);
             Error::Naive(format!("parent not found"))
         })?;
-        let node = self.nodes_tree.get(parent_index).unwrap();
+        let node = self.nodes_tree.get(node_index).unwrap();
         Ok(node.data())
     }
 
@@ -72,5 +73,14 @@ impl InodeManager {
     pub fn next_inode(&self) -> u64 {
         let _start = self.counter.start("im::next_inode".to_owned());
         self.ino_mapper.len() as u64 + 1
+    }
+
+    pub fn get_child_by_name<'a>(&'a self, ino: u64, name: &OsStr) -> Result<Option<&'a Node>> {
+        let children_set = self.children_name.get(&ino).unwrap();
+        if let Some(child_inode) = children_set.get(name) {
+            let child_node = self.get_node_by_inode(*child_inode)?;
+            return Ok(Some(child_node));
+        }
+        Ok(None)
     }
 }

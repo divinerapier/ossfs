@@ -54,10 +54,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         let _start = self.counter.start("fs::lookup".to_owned());
         {
             let nodes_manager = self.nodes_manager.read().unwrap();
-            let children_set = nodes_manager.children_name.get(&ino).unwrap();
-            if let Some(child_inode) = children_set.get(name) {
-                let child_node = nodes_manager.get_node_by_inode(*child_inode)?;
-                return Ok(child_node.attr());
+            if let Some(child_node) = nodes_manager.get_child_by_name(ino, name)? {
+                return Ok(child_node.attr().clone());
             }
         }
 
@@ -267,10 +265,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         let _start = self.counter.start("fs::read".to_owned());
         let node = {
             let nodes_manager = self.nodes_manager.read().unwrap();
-            let index = nodes_manager.ino_mapper.get(&ino).unwrap();
-            let node: &TreeNode<Node> = nodes_manager.nodes_tree.get(index).unwrap();
-            let node: Node = node.data().clone();
-            node
+            let node = nodes_manager.get_node_by_inode(ino).unwrap();
+            node.clone()
         };
         let attr: &FileAttr = &node.attr();
         if attr.size < offset as u64 {
