@@ -128,7 +128,48 @@ impl super::Backend for SimpleBackend {
             .collect::<Vec<Node>>())
     }
 
-    fn get_child<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node> {
+    // fn get_node<P: AsRef<Path> + Debug>(&self, path: P) -> super::BackendFuture<Node> {
+    //     let path: String = path.as_ref().to_str().unwrap().to_owned();
+    //     let task = async move {
+    //         let meta = std::fs::metadata(path.clone())?;
+    //         Ok(Node::new(
+    //             0,
+    //             0,
+    //             PathBuf::from(path),
+    //             FileAttr {
+    //                 ino: 0,
+    //                 size: meta.size(),
+    //                 blocks: meta.blocks(),
+    //                 atime: std::time::UNIX_EPOCH
+    //                     .clone()
+    //                     .add(std::time::Duration::from_secs(meta.atime() as u64)),
+    //                 mtime: std::time::UNIX_EPOCH
+    //                     .clone()
+    //                     .add(std::time::Duration::from_secs(meta.mtime() as u64)),
+    //                 ctime: std::time::UNIX_EPOCH
+    //                     .clone()
+    //                     .add(std::time::Duration::from_secs(meta.ctime() as u64)),
+    //                 crtime: std::time::UNIX_EPOCH
+    //                     .clone()
+    //                     .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
+    //                 kind: if meta.is_dir() {
+    //                     FileType::Directory
+    //                 } else {
+    //                     FileType::RegularFile
+    //                 },
+    //                 perm: meta.mode() as u16,
+    //                 nlink: meta.nlink() as u32,
+    //                 uid: meta.uid(),
+    //                 gid: meta.gid(),
+    //                 rdev: meta.rdev() as u32,
+    //                 flags: 0,
+    //             },
+    //         ))
+    //     };
+    //     super::BackendFuture::new(Box::new(task))
+    // }
+
+    fn get_node<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node> {
         let meta = std::fs::metadata(path.as_ref())?;
         Ok(Node::new(
             0,
@@ -238,27 +279,73 @@ impl super::Backend for SimpleBackend {
         })
     }
 
-    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> Result<Vec<u8>> {
-        let _start = self.counter.start("syscall::read".to_owned());
-        let mut file = std::fs::OpenOptions::new()
+    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> super::ReadFuture {
+        let _start = self.counter.start("backend::read".to_owned());
+        let path = path.as_ref().to_str().unwrap().to_owned();
+        super::ReadFuture::new(Box::new(self.read_from_file(path, offset, size)))
+    }
+}
+
+impl SimpleBackend {
+    fn read_from_file(
+        &self,
+        path: String,
+        offset: u64,
+        size: usize,
+    ) -> impl std::future::Future<Output = Result<Vec<u8>>> {
+        let _start = self.counter.start("future::read".to_owned());
+        let path: &String = &path;
+
+        let mut file: std::fs::File = match std::fs::OpenOptions::new()
             .read(true)
-            .write(false)
-            .append(false)
-            .truncate(false)
-            .create(false)
-            .create_new(false)
-            .open(path.as_ref())?;
-        log::trace!(
-            "{}:{} path: {:?} offset: {} size: {}",
-            std::file!(),
-            std::line!(),
-            path.as_ref(),
-            offset,
-            size,
-        );
-        let mut buffer: Vec<u8> = vec![0; size];
-        file.read_exact(&mut buffer)?;
-        Ok(buffer)
-        // Ok(std::fs::read(path)?)
+            // .custom_flags(libc::O_DIRECT | libc::O_SYNC | libc::O_NONBLOCK)
+            .open(path)
+        {
+            Ok(file) => file,
+            Err(err) => {
+                log::error!("open file {}, error: {}", path, err);
+                return futures::future::err(Error::from(err));
+            }
+        };
+
+        let len = {
+            let metadata = file.metadata().unwrap();
+            let len = metadata.len();
+            len
+        };
+        if offset == len {
+            return futures::future::ok(vec![]);
+        }
+        if offset > len {
+            log::error!(
+                "{}:{} path: {}, len: {}, offset: {}, size: {}",
+                std::file!(),
+                std::line!(),
+                path,
+                len,
+                offset,
+                size
+            );
+            return futures::future::err(Error::Backend(format!(
+                "path: {}, len: {}, offset: {}, size: {}",
+                path, len, offset, size
+            )));
+        }
+        let size = if offset + size as u64 > len {
+            len - offset
+        } else {
+            size as u64
+        } as usize;
+
+        if let Err(err) = file.seek(std::io::SeekFrom::Start(offset)) {
+            return futures::future::err(Error::from(err));
+        }
+
+        let mut buffer: Vec<u8> = vec![0u8; size];
+
+        match file.read_exact(&mut buffer) {
+            Ok(_) => futures::future::ok(buffer),
+            Err(err) => futures::future::err(Error::from(err)),
+        }
     }
 }

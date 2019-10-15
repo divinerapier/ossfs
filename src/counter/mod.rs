@@ -42,11 +42,11 @@ impl Counter {
         }
     }
 
-    pub fn start(&self, tag: String) -> Tracer {
+    pub fn start<S: Into<String>>(&self, tag: S) -> Tracer {
         let tags = self.tags.clone();
         Tracer {
             tags,
-            tag,
+            tag: tag.into(),
             interval: self.interval,
             begin_at: time::SystemTime::now(),
         }
@@ -72,7 +72,7 @@ impl Drop for Tracer {
                 return;
             } else {
                 log::info!(
-                    "{:>30} {:>6} {:>4.3?} {:>4.3?} {:>4.3?}",
+                    "{:>25} {:>6} {:>04.3?} {:>04.3?} {:>04.3?}",
                     self.tag,
                     entry.count,
                     entry.min,

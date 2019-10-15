@@ -228,7 +228,7 @@ impl Backend for S3Backend {
         Ok(nodes1)
     }
 
-    fn get_child<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node> {
+    fn get_node<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node> {
         unimplemented!()
     }
 
@@ -267,7 +267,7 @@ impl Backend for S3Backend {
     fn mknod<P: AsRef<Path> + Debug>(&self, path: P, filetype: FileType, mode: u32) -> Result<()> {
         unimplemented!()
     }
-    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> Result<Vec<u8>> {
+    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> super::ReadFuture {
         unimplemented!()
     }
 }

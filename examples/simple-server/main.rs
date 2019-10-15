@@ -19,7 +19,7 @@ fn main() {
                 .required(false)
                 .short("c")
                 .long("cache")
-                .help("Sets the number of files")
+                .help("Enable data cache")
                 .takes_value(false),
         )
         .get_matches();
@@ -47,7 +47,7 @@ fn main() {
     //     "admin",
     //     "password",
     // ));
-    let options = ["-o", "rw", "-o", "fsname=ossfs", "-o", "direct_io"]
+    let options = ["-o", "rw", "-o", "fsname=ossfs"]
         .iter()
         .map(|o| o.as_ref())
         .collect::<Vec<&std::ffi::OsStr>>();

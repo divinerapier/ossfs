@@ -76,7 +76,11 @@ impl InodeManager {
     }
 
     pub fn get_child_by_name<'a>(&'a self, ino: u64, name: &OsStr) -> Result<Option<&'a Node>> {
-        let children_set = self.children_name.get(&ino).unwrap();
+        let _start = self.counter.start("im::get_child_by_name");
+        let children_set = self
+            .children_name
+            .get(&ino)
+            .expect(&format!("get ino: {}", ino));
         if let Some(child_inode) = children_set.get(name) {
             let child_node = self.get_node_by_inode(*child_inode)?;
             return Ok(Some(child_node));

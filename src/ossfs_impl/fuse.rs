@@ -436,6 +436,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                 expected
             }
         }
+        let request_id = req.unique();
         let fs = self.fs.clone();
         let handle_group = self.handle_group.clone();
         let enable_cache = self.enable_cache;
@@ -489,13 +490,14 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
 
             fs.read(ino, fh, enable_cache, offset, size, |result| match result {
                 Ok(data) => {
-                    if enable_cache {
+                    if enable_cache && data.len() != 0 {
                         let end = read_to(offset, size, data.len());
                         reply.data(&data[offset..end]);
-                        log::trace!(
-                            "{}:{} ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
+                        log::debug!(
+                            "{}:{} request: {}, ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
                             std::file!(),
                             std::line!(),
+                            request_id,
                             ino,
                             fh,
                             data.len(),

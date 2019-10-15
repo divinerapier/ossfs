@@ -59,12 +59,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
             }
         }
 
-        Ok(self
-            .fetch_child_by_name(ino, name)
-            .ok()
-            .unwrap()
-            .attr()
-            .clone())
+        Ok(self.fetch_child_by_name(ino, name)?.attr().clone())
     }
 
     pub fn getattr(&self, ino: u64) -> Option<FileAttr> {
@@ -108,7 +103,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
             let nodes_manager = self.nodes_manager.read().unwrap();
             let parent_index = nodes_manager.ino_mapper.get(&ino).unwrap();
             let parent_node = nodes_manager.nodes_tree.get(parent_index).unwrap().data();
-            let child_node = self.backend.get_child(parent_node.path().join(name))?;
+            let child_node = self.backend.get_node(parent_node.path().join(name))?;
             (parent_index.clone(), child_node)
         };
         self.add_node_locally(&parent_index, ino, &child_node);
@@ -269,6 +264,10 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
             node.clone()
         };
         let attr: &FileAttr = &node.attr();
+        if attr.size == offset as u64 {
+            f(Ok(vec![]));
+            return;
+        }
         if attr.size < offset as u64 {
             log::error!(
                 "input offset: {} size: {}, file size: {}",
@@ -288,6 +287,11 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         } else {
             size as u64
         };
-        f(self.backend.read(node.path(), offset as u64, size as usize))
+        f(futures::executor::block_on(self.backend.read(
+            node.path(),
+            offset as u64,
+            size as usize,
+        )))
+        // f(self.backend.read(node.path(), offset as u64, size as usize))
     }
 }
