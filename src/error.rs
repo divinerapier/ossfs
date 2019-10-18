@@ -38,9 +38,8 @@ where
     }
 }
 
-// FIXME:
 impl From<hyper::Error> for Error {
-    fn from(_: hyper::Error) -> Self {
-        unimplemented!()
+    fn from(e: hyper::Error) -> Self {
+        Error::Backend(format!("hyper error: {:?}", e))
     }
 }

@@ -128,47 +128,6 @@ impl super::Backend for SimpleBackend {
             .collect::<Vec<Node>>())
     }
 
-    // fn get_node<P: AsRef<Path> + Debug>(&self, path: P) -> super::BackendFuture<Node> {
-    //     let path: String = path.as_ref().to_str().unwrap().to_owned();
-    //     let task = async move {
-    //         let meta = std::fs::metadata(path.clone())?;
-    //         Ok(Node::new(
-    //             0,
-    //             0,
-    //             PathBuf::from(path),
-    //             FileAttr {
-    //                 ino: 0,
-    //                 size: meta.size(),
-    //                 blocks: meta.blocks(),
-    //                 atime: std::time::UNIX_EPOCH
-    //                     .clone()
-    //                     .add(std::time::Duration::from_secs(meta.atime() as u64)),
-    //                 mtime: std::time::UNIX_EPOCH
-    //                     .clone()
-    //                     .add(std::time::Duration::from_secs(meta.mtime() as u64)),
-    //                 ctime: std::time::UNIX_EPOCH
-    //                     .clone()
-    //                     .add(std::time::Duration::from_secs(meta.ctime() as u64)),
-    //                 crtime: std::time::UNIX_EPOCH
-    //                     .clone()
-    //                     .add(std::time::Duration::from_secs(meta.atime_nsec() as u64)),
-    //                 kind: if meta.is_dir() {
-    //                     FileType::Directory
-    //                 } else {
-    //                     FileType::RegularFile
-    //                 },
-    //                 perm: meta.mode() as u16,
-    //                 nlink: meta.nlink() as u32,
-    //                 uid: meta.uid(),
-    //                 gid: meta.gid(),
-    //                 rdev: meta.rdev() as u32,
-    //                 flags: 0,
-    //             },
-    //         ))
-    //     };
-    //     super::BackendFuture::new(Box::new(task))
-    // }
-
     fn get_node<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node> {
         let meta = std::fs::metadata(path.as_ref())?;
         Ok(Node::new(

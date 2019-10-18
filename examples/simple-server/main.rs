@@ -40,7 +40,11 @@ fn main() {
     let mountpoint = env::var("MOUNT_POINT").unwrap_or(String::from("./mnt"));
     let rootpath = env::var("ROOT_PATH").unwrap_or(String::from("./root"));
 
-    let fs = ossfs::Fuse::new(ossfs::SimpleBackend::new(rootpath), enable_cache);
+    let fs = ossfs::Fuse::new(
+        ossfs::SeaweedfsBackend::new("http://127.0.0.1:8888", "server"),
+        enable_cache,
+    );
+    // let fs = ossfs::Fuse::new(ossfs::SimpleBackend::new(rootpath), enable_cache);
     // let fs = super::Fuse::new(super::S3Backend::new(
     //     "http://172.21.20.134:9001",
     //     "5577006791947779410",
