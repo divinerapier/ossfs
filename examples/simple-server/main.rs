@@ -41,7 +41,7 @@ fn main() {
     let rootpath = env::var("ROOT_PATH").unwrap_or(String::from("./root"));
 
     let fs = ossfs::Fuse::new(
-        ossfs::SeaweedfsBackend::new("http://127.0.0.1:8888", "server"),
+        ossfs::SeaweedfsBackend::new("http://172.21.20.250:8888", "server"),
         enable_cache,
     );
     // let fs = ossfs::Fuse::new(ossfs::SimpleBackend::new(rootpath), enable_cache);

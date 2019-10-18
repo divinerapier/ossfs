@@ -4,7 +4,7 @@ pub enum Error {
     Backend(String),
     IO(std::io::Error),
     Nix(nix::Error),
-    Naive(String),
+    Other(String),
 }
 
 impl std::fmt::Display for Error {
@@ -14,7 +14,7 @@ impl std::fmt::Display for Error {
             Error::Backend(message) => write!(f, "[backend] {}", message),
             Error::IO(io_error) => io_error.fmt(f),
             Error::Nix(e) => e.fmt(f),
-            Error::Naive(e) => write!(f, "{}", e),
+            Error::Other(e) => write!(f, "{}", e),
         }
     }
 }

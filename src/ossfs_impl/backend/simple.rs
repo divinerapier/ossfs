@@ -84,7 +84,7 @@ impl super::Backend for SimpleBackend {
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>> {
         let list: std::fs::ReadDir = match std::fs::read_dir(path.as_ref()) {
             Ok(dir) => dir,
-            Err(e) => return Err(Error::Naive(format!("{}", e))),
+            Err(e) => return Err(Error::Backend(format!("{}", e))),
         };
 
         Ok(list

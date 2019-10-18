@@ -123,7 +123,7 @@ impl Backend for S3Backend {
                     std::line!(),
                     path
                 );
-                Error::Naive(format!("parse path: {:?}", path))
+                Error::Backend(format!("parse path: {:?}", path))
             })?
             .to_owned();
         let resp: ListObjectsV2Output = self
@@ -243,7 +243,7 @@ impl Backend for S3Backend {
                     std::line!(),
                     path
                 );
-                Error::Naive(format!("parse path: {:?}", path))
+                Error::Backend(format!("parse path: {:?}", path))
             })?
             .to_owned();
         self.client

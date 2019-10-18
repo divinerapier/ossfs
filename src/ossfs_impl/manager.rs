@@ -30,7 +30,7 @@ impl InodeManager {
         let _start = self.counter.start("im::get_node_by_inode".to_owned());
         let node_index: &NodeId = self.ino_mapper.get(&ino).ok_or_else(|| {
             log::error!("{}:{} ino: {} not found", std::file!(), std::line!(), ino,);
-            Error::Naive(format!("parent not found"))
+            Error::Other(format!("parent not found"))
         })?;
         let node = self.nodes_tree.get(node_index).unwrap();
         Ok(node.data())
@@ -65,7 +65,7 @@ impl InodeManager {
             }
             Err(err) => {
                 log::error!("get children of index: {:?}, error: {}", index, err);
-                Err(Error::Naive(format!("node id error. {}", err)))
+                Err(Error::Other(format!("node id error. {}", err)))
             }
         }
     }

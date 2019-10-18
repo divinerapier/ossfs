@@ -129,7 +129,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
                 ()
             })
             .map_err(|err| {
-                Error::Naive(format!(
+                Error::Other(format!(
                     "get children from backend. {:?}, error: {}",
                     index, err
                 ))
@@ -154,7 +154,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
             match nodes_manager.ino_mapper.get(&parent_ino) {
                 Some(parent_index) => parent_index.clone(),
                 None => {
-                    return Err(Error::Naive(format!(
+                    return Err(Error::Other(format!(
                         "get index by ino for parent. ino: {}",
                         parent_ino
                     )));
@@ -275,7 +275,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
                 size,
                 attr.size
             );
-            return f(Err(Error::Naive(format!(
+            return f(Err(Error::Other(format!(
                 "input offset: {} size: {}, file size: {}",
                 offset, size, attr.size
             ))));
@@ -287,11 +287,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         } else {
             size as u64
         };
-        f(futures::executor::block_on(self.backend.read(
-            node.path(),
-            offset as u64,
-            size as usize,
-        )))
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        f(runtime.block_on(self.backend.read(node.path(), offset as u64, size as usize)))
         // f(self.backend.read(node.path(), offset as u64, size as usize))
     }
 }
