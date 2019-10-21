@@ -98,7 +98,7 @@ impl SeaweedfsBackend {
             u.query_pairs_mut().extend_pairs(query_pairs.into_iter());
         }
         let u = u.as_str().replace("+", "%20");
-        println!("escape u: {}", u);
+        log::debug!("escape u: {}", u);
         u.as_str().parse().unwrap()
     }
 
@@ -133,12 +133,12 @@ impl SeaweedfsBackend {
     ) -> impl std::future::Future<Output = Result<FileAttr>> + 'static {
         let client = self.client.clone();
         let request_uri = std::sync::Arc::new(request.uri().clone().to_string());
-        println!("{}:{}", std::file!(), std::line!());
+        log::debug!("{}:{}", std::file!(), std::line!());
         client
             .request(request)
             .map(|res| match res {
                 Ok(res) => {
-                    println!("{}:{}", std::file!(), std::line!());
+                    log::debug!("{}:{}", std::file!(), std::line!());
                     let response: Response<Body> = res;
                     if !response.status().is_success() {
                         return Err(Error::Backend(format!(
@@ -147,7 +147,7 @@ impl SeaweedfsBackend {
                         )));
                     }
                     let header = response.headers();
-                    println!("{}:{} header: {:?}", std::file!(), std::line!(), header);
+                    log::debug!("{}:{} header: {:?}", std::file!(), std::line!(), header);
                     let size = if header.contains_key("Content-Length") {
                         let value: &hyper::header::HeaderValue = &header["Content-Length"];
                         value.to_str().unwrap_or("0").parse::<u64>().unwrap_or(0)
@@ -230,7 +230,7 @@ impl Backend for SeaweedfsBackend {
         };
         // let body: Vec<u8> = futures::executor::block_on(self.get(request))?;
         let body: Vec<u8> = self.runtime.block_on(self.get(request))?;
-        println!("{:#?}", std::str::from_utf8(&body));
+        log::debug!("{:#?}", std::str::from_utf8(&body));
         let response: ListObjectsResponse = serde_json::from_slice(&body).unwrap();
 
         fn trim_prefix<'a, 'b>(s: &'a str, prefix: &'b str) -> &'a str {
@@ -293,14 +293,14 @@ impl Backend for SeaweedfsBackend {
         let request = Request::head(u)
             .body(Body::empty())
             .expect(&format!("head {:?}", path.as_ref()));
-        println!("befor get attribute");
+        log::debug!("befor get attribute");
         // let attr =
         //     futures::executor::block_on(self.get_attibute(request)).expect("block on failed");
         let attr = self
             .runtime
             .block_on(self.get_attibute(request))
             .expect("block on failed");
-        println!("after get attribute");
+        log::debug!("after get attribute");
         Ok(Node::new(0, 0, path.as_ref().to_path_buf(), attr))
     }
 

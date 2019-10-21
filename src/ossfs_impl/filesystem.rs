@@ -22,6 +22,7 @@ where
     backend: B,
     nodes_manager: std::sync::Arc<std::sync::RwLock<InodeManager>>,
     counter: crate::counter::Counter,
+    runtime: tokio::runtime::Runtime,
 }
 
 unsafe impl<B: Backend + std::fmt::Debug + Send + Sync> Send for FileSystem<B> {}
@@ -47,6 +48,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
                 children_name,
             ))),
             counter: crate::counter::Counter::new(1),
+            runtime: tokio::runtime::Runtime::new().unwrap(),
         }
     }
 
@@ -287,8 +289,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         } else {
             size as u64
         };
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        f(runtime.block_on(self.backend.read(node.path(), offset as u64, size as usize)))
-        // f(self.backend.read(node.path(), offset as u64, size as usize))
+        f(self
+            .runtime
+            .block_on(self.backend.read(node.path(), offset as u64, size as usize)))
     }
 }

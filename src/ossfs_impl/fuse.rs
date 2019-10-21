@@ -775,7 +775,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
     fn statfs(&mut self, _req: &Request, _ino: u64, reply: ReplyStatfs) {
         match self.fs.statfs(_ino) {
             Ok(stat) => {
-                log::info!(
+                log::debug!(
                     "{}:{}, ino: {}, stat: {:?}",
                     std::file!(),
                     std::line!(),
@@ -794,7 +794,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                 );
             }
             Err(e) => {
-                log::info!(
+                log::error!(
                     "{}:{}, ino: {}, error: {}",
                     std::file!(),
                     std::line!(),

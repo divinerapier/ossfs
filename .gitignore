@@ -25,6 +25,7 @@ Cargo.lock
 # Testing
 tmp/
 mnt/
+*.txt
 
 # Perf
 *.svg
