@@ -418,7 +418,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
     /// if the open method didn't set any value.
 
     fn read(&mut self, req: &Request, ino: u64, fh: u64, offset: i64, size: u32, reply: ReplyData) {
-        log::trace!(
+        log::debug!(
             "{}:{}, ino: {}, fh: {}, offset: {}, size: {}",
             std::file!(),
             std::line!(),
@@ -456,6 +456,14 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                                 let data: &[u8] = &elem.content;
                                 let end = read_to(offset, size, data.len());
                                 reply.data(&data[offset..end]);
+                                log::debug!(
+                                "{}:{} add new cache. ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
+                                std::file!(), std::line!(),
+                                ino,
+                                fh,
+                                data.len(),
+                                offset, size, end
+                            );
                                 return;
                             }
                         }
@@ -474,8 +482,9 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                             let data: &[u8] = &new_elem.content;
                             let end = read_to(offset, size, data.len());
                             reply.data(&data[offset..end]);
-                            log::trace!(
-                                "add new cache. ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
+                            log::debug!(
+                                "{}:{} add new cache. ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
+                                std::file!(), std::line!(),
                                 ino,
                                 fh,
                                 new_elem.content.len(),
@@ -492,7 +501,6 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                 Ok(data) => {
                     if enable_cache && data.len() != 0 {
                         let end = read_to(offset, size, data.len());
-                        reply.data(&data[offset..end]);
                         log::debug!(
                             "{}:{} request: {}, ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
                             std::file!(),
@@ -505,6 +513,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                             size,
                             end
                         );
+                        reply.data(&data[offset..end]);
                         let mut handle_group = handle_group.write().unwrap();
                         handle_group.total_length += data.len() as u64;
                         handle_group
@@ -516,6 +525,17 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                                 handle: fh,
                             });
                     } else {
+                        log::debug!(
+                            "{}:{} request: {}, ino: {}, fh: {}, length: {}, offset: {}, size: {}",
+                            std::file!(),
+                            std::line!(),
+                            request_id,
+                            ino,
+                            fh,
+                            data.len(),
+                            offset,
+                            size,
+                        );
                         reply.data(&data);
                     }
                 }

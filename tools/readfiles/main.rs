@@ -106,7 +106,11 @@ fn recursive(path: String, concurrency: usize, max_keys: i64, shuffle: bool, cou
         }
         let path = entry.path().to_str().unwrap().to_owned();
         m.push(path);
-        if max_keys > 0 && m.len() >= max_keys as usize {
+        let length = m.len();
+        if length % 100000 == 0 {
+            println!("load {}", length);
+        }
+        if max_keys > 0 && length >= max_keys as usize {
             break;
         }
     }

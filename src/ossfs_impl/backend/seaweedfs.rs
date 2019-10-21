@@ -103,10 +103,10 @@ impl SeaweedfsBackend {
     }
 
     fn get(
-        &self,
+        client: Client<HttpConnector, Body>,
         request: Request<Body>,
     ) -> impl std::future::Future<Output = Result<Vec<u8>>> + 'static {
-        let client = self.client.clone();
+        // let client = self.client.clone();
         async move {
             let uri = request.uri().to_string();
             let response: Response<Body> = client.request(request).await?;
@@ -123,9 +123,34 @@ impl SeaweedfsBackend {
                 let chunk: &[u8] = &next?;
                 data.extend_from_slice(chunk);
             }
+            // let end = if offset + limit > data.len() {
+            //     data.len()
+            // } else {
+            //     offset + limit
+            // };
             Ok(data)
         }
     }
+
+
+    fn get_page(
+        client: Client<HttpConnector, Body>,
+        request: Request<Body>,
+        offset: usize,
+        limit: usize,
+    ) -> impl std::future::Future<Output = Result<Vec<u8>>> + 'static {
+        async move {
+            let data = Self::get(client, request).await?;
+            let end = if offset + limit > data.len() {
+                data.len()
+            } else {
+                offset + limit
+            };
+            Ok(data[offset..end].to_vec())
+        }
+    }
+
+
 
     fn get_attibute(
         &self,
@@ -229,7 +254,8 @@ impl Backend for SeaweedfsBackend {
             request
         };
         // let body: Vec<u8> = futures::executor::block_on(self.get(request))?;
-        let body: Vec<u8> = self.runtime.block_on(self.get(request))?;
+        let client = self.client.clone();
+        let body: Vec<u8> = self.runtime.block_on(Self::get(client, request))?;
         log::debug!("{:#?}", std::str::from_utf8(&body));
         let response: ListObjectsResponse = serde_json::from_slice(&body).unwrap();
 
@@ -338,6 +364,7 @@ impl Backend for SeaweedfsBackend {
     fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> super::ReadFuture {
         let u = self.escape(path.as_ref().to_str().unwrap(), None);
         let request = Request::get(u).body(Body::empty()).unwrap();
-        super::ReadFuture::new(Box::new(self.get(request)))
+        let client = self.client.clone();
+        super::ReadFuture::new(Box::new(Self::get_page(client, request, offset as usize, size)))
     }
 }
