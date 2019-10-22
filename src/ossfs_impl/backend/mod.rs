@@ -15,12 +15,12 @@ pub mod simple;
 pub trait Backend {
     fn root(&self) -> Node;
     fn get_children<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Vec<Node>>;
-    // fn get_node<P: AsRef<Path> + Debug>(&self, path: P) -> BackendFuture<Node>;
+    // fn get_node<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node>;
     fn get_node<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Node>;
     fn statfs<P: AsRef<Path> + Debug>(&self, path: P) -> Result<Stat>;
     fn mknod<P: AsRef<Path> + Debug>(&self, path: P, filetype: FileType, mode: u32) -> Result<()>;
-    // fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> Result<Vec<u8>>;
-    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> ReadFuture;
+    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> Result<Vec<u8>>;
+    // fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> ReadFuture;
 }
 
 pub struct ReadFuture {

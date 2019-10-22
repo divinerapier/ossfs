@@ -64,7 +64,10 @@ impl SeaweedfsBackend {
         S: Into<String>,
     {
         let bucket = bucket.into();
-        let client = Client::new();
+        let client = Client::builder()
+            .max_idle_per_host(100)
+            .keep_alive(true)
+            .build_http();
         let mut filer_url: String = filer_url.into();
         if !filer_url.ends_with("/") {
             filer_url += "/";
@@ -110,28 +113,28 @@ impl SeaweedfsBackend {
         async move {
             let uri = request.uri().to_string();
             let response: Response<Body> = client.request(request).await?;
-            if !response.status().is_success() {
-                return Err(Error::Backend(format!(
-                    "get {}, status: {}",
-                    uri,
-                    response.status()
-                )));
-            }
+            let status = response.status();
+
             let mut body: Body = response.into_body();
             let mut data = vec![];
             while let Some(next) = body.next().await {
                 let chunk: &[u8] = &next?;
                 data.extend_from_slice(chunk);
             }
-            // let end = if offset + limit > data.len() {
-            //     data.len()
-            // } else {
-            //     offset + limit
-            // };
-            Ok(data)
+            if !status.is_success() {
+                let error_message = format!(
+                    "get {}, status: {}, message: {:?}",
+                    uri,
+                    status,
+                    String::from_utf8(data)
+                );
+                log::error!("{}", error_message);
+                Err(Error::Backend(error_message))
+            } else {
+                Ok(data)
+            }
         }
     }
-
 
     fn get_page(
         client: Client<HttpConnector, Body>,
@@ -140,17 +143,15 @@ impl SeaweedfsBackend {
         limit: usize,
     ) -> impl std::future::Future<Output = Result<Vec<u8>>> + 'static {
         async move {
+            let mut request = request;
+            request.headers_mut().append(
+                "Range",
+                format!("bytes={}-{}", offset, offset + limit - 1).parse().unwrap(),
+            );
             let data = Self::get(client, request).await?;
-            let end = if offset + limit > data.len() {
-                data.len()
-            } else {
-                offset + limit
-            };
-            Ok(data[offset..end].to_vec())
+            Ok(data)
         }
     }
-
-
 
     fn get_attibute(
         &self,
@@ -200,9 +201,7 @@ impl SeaweedfsBackend {
                         size,
                         blocks: 1,
                         atime: std::time::SystemTime::now(),
-                        mtime: UNIX_EPOCH
-                            .clone()
-                            .add(Duration::from_secs(last_modified as u64)),
+                        mtime: UNIX_EPOCH.add(Duration::from_secs(last_modified as u64)),
                         ctime: UNIX_EPOCH,
                         crtime: UNIX_EPOCH,
                         kind: if is_dir {
@@ -361,10 +360,29 @@ impl Backend for SeaweedfsBackend {
     fn mknod<P: AsRef<Path> + Debug>(&self, path: P, filetype: FileType, mode: u32) -> Result<()> {
         unimplemented!()
     }
-    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> super::ReadFuture {
+    // fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> super::ReadFuture {
+    //     let u = self.escape(path.as_ref().to_str().unwrap(), None);
+    //     let request = Request::get(u).body(Body::empty()).unwrap();
+    //     let client = self.client.clone();
+    //     super::ReadFuture::new(Box::new(Self::get_page(
+    //         client,
+    //         request,
+    //         offset as usize,
+    //         size,
+    //     )))
+    // }
+
+    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> Result<Vec<u8>> {
         let u = self.escape(path.as_ref().to_str().unwrap(), None);
         let request = Request::get(u).body(Body::empty()).unwrap();
         let client = self.client.clone();
-        super::ReadFuture::new(Box::new(Self::get_page(client, request, offset as usize, size)))
+        // super::ReadFuture::new(Box::new(Self::get_page(
+        //     client,
+        //     request,
+        //     offset as usize,
+        //     size,
+        // )))
+        self.runtime
+            .block_on(Self::get_page(client, request, offset as usize, size))
     }
 }

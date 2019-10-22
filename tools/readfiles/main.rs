@@ -87,12 +87,21 @@ fn main() {
     } else {
         1
     };
-    println!("count: {}", count);
+    let threads: usize = if matches.is_present("threads") {
+        matches
+            .value_of("threads")
+            .unwrap()
+            .parse::<usize>()
+            .unwrap()
+    } else {
+        num_cpus::get()
+    };
+    println!("loop times: {}, threads count: {}", count, threads);
     let shuffle = matches.is_present("shuffle");
     if !matches.is_present("recursive") {
         // basic(mountpoint.to_owned(), max_keys);
     } else {
-        recursive(mountpoint.to_owned(), 32, max_keys, shuffle, count);
+        recursive(mountpoint.to_owned(), threads, max_keys, shuffle, count);
     }
 }
 // total count: 100000, read files: 1387.315472927s, total length: 13609179611

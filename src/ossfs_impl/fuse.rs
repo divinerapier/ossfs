@@ -57,7 +57,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync + 'static> Fuse<B> {
             path_cache: HashMap::new(),
             next_handle: AtomicU64::new(2),
             handle_reference: HashMap::new(),
-            pool: threadpool::ThreadPool::new(64),
+            pool: threadpool::ThreadPool::new(32),
             handle_group: Arc::new(RwLock::new(HandleGroup::new())),
             counter: crate::counter::Counter::new(1),
             enable_cache,
@@ -447,7 +447,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
             let offset: usize = offset as usize;
             let size: usize = size as usize;
             if enable_cache {
-                let mut need_add_reference= false;
+                let mut need_add_reference = false;
                 {
                     let handle_group = handle_group.read().unwrap();
                     if let Some(group) = handle_group.map.get(&ino) {
@@ -457,8 +457,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                                 let end = read_to(offset, size, data.len());
                                 reply.data(&data[offset..end]);
                                 log::debug!(
-                                "{}:{} add new cache. ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
-                                std::file!(), std::line!(),
+                                "{}:{} request_id: {}. ino: {}, fh: {}, data.len(): {}, offset: {}, size: {}, end: {}",
+                                std::file!(), std::line!(), request_id,
                                 ino,
                                 fh,
                                 data.len(),
@@ -483,8 +483,8 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                             let end = read_to(offset, size, data.len());
                             reply.data(&data[offset..end]);
                             log::debug!(
-                                "{}:{} add new cache. ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
-                                std::file!(), std::line!(),
+                                "{}:{} request_id: {}. ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
+                                std::file!(), std::line!(), request_id,
                                 ino,
                                 fh,
                                 new_elem.content.len(),
@@ -502,7 +502,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                     if enable_cache && data.len() != 0 {
                         let end = read_to(offset, size, data.len());
                         log::debug!(
-                            "{}:{} request: {}, ino: {}, fh: {}, length: {}, offset: {}, size: {}, end: {}",
+                            "{}:{} request_id: {}, ino: {}, fh: {}, data.len(): {}, offset: {}, size: {}, end: {}",
                             std::file!(),
                             std::line!(),
                             request_id,
@@ -526,7 +526,7 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                             });
                     } else {
                         log::debug!(
-                            "{}:{} request: {}, ino: {}, fh: {}, length: {}, offset: {}, size: {}",
+                            "{}:{} request_id: {}, ino: {}, fh: {}, data.len(): {}, offset: {}, size: {}",
                             std::file!(),
                             std::line!(),
                             request_id,
@@ -541,9 +541,10 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> Filesystem for Fuse<B> {
                 }
                 Err(err) => {
                     log::error!(
-                        "{}:{} ino: {}, fh: {}, offset: {}, size: {}, error: {}",
+                        "{}:{} request_id: {}, ino: {}, fh: {}, offset: {}, size: {}, error: {}",
                         std::file!(),
                         std::line!(),
+                        request_id,
                         ino,
                         fh,
                         offset,

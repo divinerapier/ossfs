@@ -238,10 +238,16 @@ impl super::Backend for SimpleBackend {
         })
     }
 
-    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> super::ReadFuture {
+    // fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> super::ReadFuture {
+    //     let _start = self.counter.start("backend::read".to_owned());
+    //     let path = path.as_ref().to_str().unwrap().to_owned();
+    //     super::ReadFuture::new(Box::new(self.read_from_file(path, offset, size)))
+    // }
+    fn read<P: AsRef<Path> + Debug>(&self, path: P, offset: u64, size: usize) -> Result<Vec<u8>> {
         let _start = self.counter.start("backend::read".to_owned());
         let path = path.as_ref().to_str().unwrap().to_owned();
-        super::ReadFuture::new(Box::new(self.read_from_file(path, offset, size)))
+
+        self.synchronized_read_from_file(path, offset, size)
     }
 }
 
@@ -305,6 +311,68 @@ impl SimpleBackend {
         match file.read_exact(&mut buffer) {
             Ok(_) => futures::future::ok(buffer),
             Err(err) => futures::future::err(Error::from(err)),
+        }
+    }
+
+    fn synchronized_read_from_file(
+        &self,
+        path: String,
+        offset: u64,
+        size: usize,
+    ) -> Result<Vec<u8>> {
+        let _start = self.counter.start("future::read".to_owned());
+        let path: &String = &path;
+
+        let mut file: std::fs::File = match std::fs::OpenOptions::new()
+            .read(true)
+            // .custom_flags(libc::O_DIRECT | libc::O_SYNC | libc::O_NONBLOCK)
+            .open(path)
+        {
+            Ok(file) => file,
+            Err(err) => {
+                log::error!("open file {}, error: {}", path, err);
+                return Err(Error::from(err));
+            }
+        };
+
+        let len = {
+            let metadata = file.metadata().unwrap();
+            let len = metadata.len();
+            len
+        };
+        if offset == len {
+            return Ok(vec![]);
+        }
+        if offset > len {
+            log::error!(
+                "{}:{} path: {}, len: {}, offset: {}, size: {}",
+                std::file!(),
+                std::line!(),
+                path,
+                len,
+                offset,
+                size
+            );
+            return Err(Error::Backend(format!(
+                "path: {}, len: {}, offset: {}, size: {}",
+                path, len, offset, size
+            )));
+        }
+        let size = if offset + size as u64 > len {
+            len - offset
+        } else {
+            size as u64
+        } as usize;
+
+        if let Err(err) = file.seek(std::io::SeekFrom::Start(offset)) {
+            return Err(Error::from(err));
+        }
+
+        let mut buffer: Vec<u8> = vec![0u8; size];
+
+        match file.read_exact(&mut buffer) {
+            Ok(_) => Ok(buffer),
+            Err(err) => Err(Error::from(err)),
         }
     }
 }

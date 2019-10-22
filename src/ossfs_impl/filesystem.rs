@@ -289,8 +289,9 @@ impl<B: Backend + std::fmt::Debug + Send + Sync> FileSystem<B> {
         } else {
             size as u64
         };
-        f(self
-            .runtime
-            .block_on(self.backend.read(node.path(), offset as u64, size as usize)))
+        // f(self
+        //     .runtime
+        //     .block_on(self.backend.read(node.path(), offset as u64, size as usize)))
+        f(self.backend.read(node.path(), offset as u64, size as usize))
     }
 }
